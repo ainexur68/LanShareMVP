@@ -1,0 +1,19 @@
+LanShare MVP
+Copyright 2026 LanShare contributors
+
+LanShare MVP is an independent Android LAN file-transfer implementation.
+It is not affiliated with, sponsored by, or endorsed by LocalSend.
+
+This project references the publicly documented LocalSend discovery and
+file-transfer ideas for interoperability-oriented study. No LocalSend
+application source code, binary, asset, or copied documentation text is
+included in this repository.
+
+Referenced projects:
+- LocalSend application: https://github.com/localsend/localsend
+  The repository currently identifies its source as Apache-2.0 licensed.
+- LocalSend Protocol documentation: https://github.com/localsend/protocol
+  This repository links to the documentation as a protocol reference only;
+  it does not redistribute that repository's text or code.
+
+The LocalSend name and trademarks belong to their respective owners.

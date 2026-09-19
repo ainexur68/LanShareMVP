@@ -24,6 +24,12 @@
 
 网络流程借鉴 LocalSend 的成熟思路：局域网组播发现，以及 `prepare -> upload -> cancel` 的传输阶段；本项目没有复制 LocalSend 应用源码，而是实现了一个更小的 MVP 协议，并增加 `/status`、offset resume 和完整 SHA-256 验证。LocalSend Protocol v2.2 本身也定义了 `sha256` 校验失败使用 422；详见 `docs/REFERENCES.md`。
 
+## 开源许可与第三方声明
+
+本项目的原创代码和文档采用 Apache License 2.0，详见 [`LICENSE`](LICENSE) 和 [`NOTICE`](NOTICE)。
+
+LocalSend 仅作为公开协议/设计思路参考；本仓库没有复制 LocalSend 源码、二进制、资源或文档原文，也没有引入 LocalSend 运行时依赖。LocalSend 应用仓库当前标注为 Apache-2.0；详细的来源、范围和许可证核对记录见 [`docs/REFERENCES.md`](docs/REFERENCES.md)。Gradle 依赖仍分别遵循各自上游许可证，见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
 ## 打开与运行
 
 环境：Android Studio + Android SDK 35，JDK 17+。最低 Android 10（API 29）。
@@ -76,4 +82,8 @@ Windows：
 - `docs/TEST_PLAN.md`
 - `docs/ROADMAP.md`
 - `docs/AGENT_GUIDE.md`
+- `docs/REFERENCES.md`
+- `LICENSE`
+- `NOTICE`
+- `THIRD_PARTY_NOTICES.md`
 - `AGENTS.md`
