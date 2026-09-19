@@ -4,7 +4,7 @@
 
 ## Discovery
 
-UDP multicast `224.0.0.167:53317`。字段参考 LocalSend discovery，但 `version=lanshare-0.1`，因此不宣称协议兼容。广播中的 `port` 是接收服务真实 TCP 端口，`token` 是当前服务生命周期的访问口令。
+UDP multicast `224.0.0.167:53317`。字段参考 LocalSend discovery，但 `version=lanshare-0.1`，因此不宣称协议兼容。广播中的 `port` 是接收服务真实 TCP 端口，`token` 是当前服务生命周期内的 4 位数字访问口令。
 
 除发现以外的 HTTP 请求都必须携带 `token` 查询参数；缺失或不匹配返回 `401`。
 

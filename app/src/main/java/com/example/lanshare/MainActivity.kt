@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -69,6 +70,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         consumeShareIntent(intent)
+    }
+
+    private fun openReceiveDirectory() {
+        val intents = listOf(ReceiveDirectory.viewIntent(), ReceiveDirectory.treeIntent())
+        for (intent in intents) {
+            if (intent.resolveActivity(packageManager) != null && runCatching { startActivity(intent) }.isSuccess) {
+                return
+            }
+        }
+        Toast.makeText(this, "未找到可用的文件管理器", Toast.LENGTH_SHORT).show()
     }
 
     private fun consumeShareIntent(intent: Intent?) {
@@ -258,10 +269,10 @@ class MainActivity : ComponentActivity() {
         )
         OutlinedTextField(
             value = token,
-            onValueChange = { token = it },
+            onValueChange = { token = it.filter { character -> character.isDigit() }.take(4) },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("访问口令") },
-            placeholder = { Text("接收设备“本机接收”卡片中的口令") },
+            label = { Text("4位数字口令") },
+            placeholder = { Text("例如 4821") },
             singleLine = true
         )
         OutlinedButton(
@@ -269,7 +280,7 @@ class MainActivity : ComponentActivity() {
             onClick = {
                 runCatching {
                     val parsed = PeerEndpoint.parse(endpoint)
-                    require(token.trim().isNotEmpty()) { "请输入访问口令" }
+                    require(token.matches(Regex("[0-9]{4}"))) { "请输入4位数字口令" }
                     AppState.upsertPeer(
                         Peer(
                             alias = parsed.host,
@@ -317,7 +328,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Text("自动发现已开启", color = Color(0xFF1D4ED8), fontWeight = FontWeight.SemiBold)
                             Text("服务端口：" + endpoint.port)
-                            Text("访问口令：" + endpoint.token)
+                            Text("4位数字口令：" + endpoint.token)
                             Text(
                                 "手动连接时，把本机 IP、端口和口令发给对方。",
                                 style = MaterialTheme.typography.bodySmall
@@ -338,7 +349,13 @@ class MainActivity : ComponentActivity() {
                     Text(humanSize(state.sent) + " / " + humanSize(state.total))
                 }
                 if (state.message.isNotBlank()) Text(state.message)
-                Text("接收目录：Download/LanShare", style = MaterialTheme.typography.bodySmall)
+                Text("接收目录：" + ReceiveDirectory.RELATIVE_PATH, style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    onClick = { openReceiveDirectory() }
+                ) {
+                    Text("打开接收目录")
+                }
                 Text("完成条件：接收端 SHA-256 与发送端一致。", style = MaterialTheme.typography.bodySmall)
             }
         }

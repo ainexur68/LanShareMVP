@@ -8,9 +8,7 @@ object AccessToken {
     private val random = SecureRandom()
 
     fun create(): String {
-        val bytes = ByteArray(6)
-        random.nextBytes(bytes)
-        return bytes.joinToString(separator = "") { "%02x".format(it) }
+        return random.nextInt(10_000).toString().padStart(4, '0')
     }
 
     fun matches(expected: String?, provided: String?): Boolean {

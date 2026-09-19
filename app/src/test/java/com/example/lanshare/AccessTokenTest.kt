@@ -9,8 +9,8 @@ class AccessTokenTest {
     fun createsACompactTokenThatCanBeVerified() {
         val token = AccessToken.create()
 
-        assertTrue(token.matches(Regex("[a-f0-9]{12}")))
+        assertTrue(token.matches(Regex("[0-9]{4}")))
         assertTrue(AccessToken.matches(token, token))
-        assertFalse(AccessToken.matches(token, "000000000000"))
+        assertFalse(AccessToken.matches(token, if (token == "0000") "0001" else "0000"))
     }
 }
