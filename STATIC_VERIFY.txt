@@ -1,0 +1,11 @@
+PASS ACTION_SEND
+PASS ACTION_SEND_MULTIPLE
+PASS foreground dataSync
+PASS prepare endpoint
+PASS status endpoint
+PASS upload endpoint
+PASS complete endpoint
+PASS sha256 mismatch 422
+PASS Downloads/LanShare
+PASS stream buffer
+STATIC_VERIFY_PASS

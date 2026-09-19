@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.LanShare" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">#F2F2F7</item>
+        <item name="android:statusBarColor">#F2F2F7</item>
+    </style>
+</resources>
