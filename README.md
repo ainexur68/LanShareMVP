@@ -5,7 +5,9 @@
 ## MVP 已实现范围
 
 - Android `ACTION_SEND` / `ACTION_SEND_MULTIPLE` 系统分享入口，直接消费 `content://` URI，不要求真实文件路径。
+- App 内支持一次选择多个文件，和系统分享入口共用同一发送队列。
 - 同一局域网 UDP Multicast 自动发现；发现失败可手动输入 IP。
+- 发现广播携带接收端动态服务端口和短期访问口令；端口占用时自动尝试备用端口。
 - 接收端必须人工确认。
 - 流式传输，不把整文件加载进内存。
 - 中断续传：接收端 `.part` 临时文件长度即续传 offset；同一 session 重试时返回 offset。
@@ -14,6 +16,7 @@
 - 前台 Service 保持接收服务器/发现服务存活。
 - 单 APK 双角色。
 - Compose 响应式 UI：窄屏单列；>=720dp 宽屏双栏，适配手机竖屏/车机横屏。
+- LanDrop 风格的卡片化发送/接收状态 UI、手动地址和访问口令入口。
 - 首版不包含音乐在线播放。
 
 ## 设计来源
@@ -49,16 +52,17 @@ Windows：
 
 ## 当前验证状态
 
-交付环境已执行：项目结构检查、关键 Manifest/协议端点/文档存在性检查、ZIP 完整性检查。
+融合后已执行：`python scripts/static_verify.py`、`:app:testDebugUnitTest`、`:app:lintDebug`、`:app:assembleDebug`。
 
-**未执行 Android Gradle 编译与真机双机验证**：当前交付容器没有 Android SDK、Gradle，也无法联网下载依赖。不要把本 ZIP 当作“已真机验收”。首次真机验收必须按 `docs/TEST_PLAN.md` 执行。
+当前环境没有两台 Android 真机，因此尚未完成真实双机局域网传输验收；首次真机验收仍需按 `docs/TEST_PLAN.md` 执行。
 
 ## 已知 MVP 限制
 
 - 传输是 HTTP 明文，仅适合受信任的本地网络；后续应加入 TLS/设备配对。
 - 续传依赖同一 `sessionId`；App/设备重启后的持久化恢复尚未实现。
 - 当前每次 `PUT` 传输剩余全部字节；网络断开后重新发起同一 session 会从 `.part` 长度继续。
-- 设备发现只实现 UDP Multicast + 手动 IP；未做子网扫描。
+- 设备发现只实现 UDP Multicast + 手动 IP/端口/访问口令；未做子网扫描。
+- 访问口令只在当前前台服务生命周期内有效；HTTP 仍为明文传输，不能替代 TLS。
 - UI 是 Apple 风格取向（留白、圆角、克制层级），没有复制 Apple 专有资源。
 
 ## 文档

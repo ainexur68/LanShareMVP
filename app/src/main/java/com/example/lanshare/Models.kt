@@ -7,6 +7,7 @@ data class Peer(
     val host: String,
     val port: Int,
     val fingerprint: String,
+    val token: String = "",
     val lastSeenMs: Long = System.currentTimeMillis()
 )
 
@@ -26,4 +27,9 @@ data class TransferUiState(
     val sent: Long = 0,
     val total: Long = 0,
     val message: String = ""
+)
+
+data class LocalEndpoint(
+    val port: Int = TransferProtocol.DEFAULT_PORT,
+    val token: String = ""
 )

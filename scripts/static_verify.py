@@ -10,8 +10,10 @@ required = [
 missing=[p for p in required if not (root/p).exists()]
 if missing:
     print('MISSING', *missing, sep='\n'); sys.exit(1)
-manifest=(root/'app/src/main/AndroidManifest.xml').read_text()
-code=(root/'app/src/main/java/com/example/lanshare/TransferProtocol.kt').read_text()
+manifest=(root/'app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
+code=(root/'app/src/main/java/com/example/lanshare/TransferProtocol.kt').read_text(encoding='utf-8')
+service=(root/'app/src/main/java/com/example/lanshare/TransferService.kt').read_text(encoding='utf-8')
+discovery=(root/'app/src/main/java/com/example/lanshare/DiscoveryManager.kt').read_text(encoding='utf-8')
 checks={
  'ACTION_SEND':'android.intent.action.SEND' in manifest,
  'ACTION_SEND_MULTIPLE':'android.intent.action.SEND_MULTIPLE' in manifest,
@@ -23,6 +25,8 @@ checks={
  'sha256 mismatch 422':'422' in code and 'sha256 mismatch' in code,
  'Downloads/LanShare':'Environment.DIRECTORY_DOWNLOADS + "/LanShare"' in code,
  'stream buffer':'1024 * 1024' in code,
+ 'access token':'AccessToken.matches' in code and 'token' in discovery,
+ 'dynamic service port':'for (offset in 0..10)' in service,
 }
 for k,v in checks.items(): print(('PASS' if v else 'FAIL'), k)
 if not all(checks.values()): sys.exit(2)

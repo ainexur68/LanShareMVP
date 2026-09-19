@@ -8,4 +8,6 @@ PASS complete endpoint
 PASS sha256 mismatch 422
 PASS Downloads/LanShare
 PASS stream buffer
+PASS access token
+PASS dynamic service port
 STATIC_VERIFY_PASS

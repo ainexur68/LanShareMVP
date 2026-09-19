@@ -21,22 +21,28 @@ import java.util.concurrent.Executors
  * Minimal LAN protocol inspired by LocalSend's prepare -> upload -> cancel flow.
  * This MVP adds explicit resume/status and whole-file SHA-256 verification.
  */
-class TransferServer(private val context: Context, private val port: Int = 53317) {
+class TransferServer(
+    private val context: Context,
+    private val port: Int = TransferProtocol.DEFAULT_PORT,
+    private val accessToken: String? = null
+) {
     private val executor = Executors.newCachedThreadPool()
     private val sessions = ConcurrentHashMap<String, ReceiveSession>()
     @Volatile private var running = false
     private var serverSocket: ServerSocket? = null
 
-    fun start() {
-        if (running) return
+    fun start(): Int {
+        if (running) return serverSocket?.localPort ?: port
         running = true
+        serverSocket = ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(port)) }
+        val activePort = serverSocket!!.localPort
         executor.execute {
-            serverSocket = ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(port)) }
             while (running) {
                 val socket = try { serverSocket!!.accept() } catch (_: IOException) { break }
                 executor.execute { handle(socket) }
             }
         }
+        return activePort
     }
 
     fun stop() { running = false; runCatching { serverSocket?.close() }; executor.shutdownNow() }
@@ -47,6 +53,9 @@ class TransferServer(private val context: Context, private val port: Int = 53317
         val output = BufferedOutputStream(s.getOutputStream())
         val request = HttpRequest.read(input) ?: return@use
         try {
+            if (accessToken != null && !AccessToken.matches(accessToken, request.query["token"])) {
+                return HttpResponse.text(output, 401, "invalid access token")
+            }
             when {
                 request.method == "POST" && request.path == "/v1/prepare" -> prepare(request, s, output)
                 request.method == "GET" && request.path == "/v1/status" -> status(request, output)
@@ -290,10 +299,15 @@ class TransferClient(private val context: Context) {
         return read(conn)
     }
 
-    private fun open(peer: Peer, method: String, path: String): HttpURLConnection =
-        (URL("http://${peer.host}:${peer.port}$path").openConnection() as HttpURLConnection).apply {
+    private fun open(peer: Peer, method: String, path: String): HttpURLConnection {
+        val separator = if ('?' in path) '&' else '?'
+        val tokenQuery = if (peer.token.isBlank()) "" else "$separator" +
+            "token=" + java.net.URLEncoder.encode(peer.token, "UTF-8")
+        val target = "http://" + peer.host + ":" + peer.port + path + tokenQuery
+        return (URL(target).openConnection() as HttpURLConnection).apply {
             requestMethod = method; connectTimeout = 8_000; readTimeout = 130_000; useCaches = false
         }
+    }
 
     private fun read(conn: HttpURLConnection): Response {
         val code = conn.responseCode
@@ -351,7 +365,7 @@ private object HttpResponse {
     fun text(out: OutputStream, code: Int, text: String) = bytes(out, code, "text/plain; charset=utf-8", text.toByteArray())
     fun json(out: OutputStream, code: Int, json: JSONObject) = bytes(out, code, "application/json", json.toString().toByteArray())
     private fun bytes(out: OutputStream, code: Int, type: String, body: ByteArray) {
-        val reason = when(code){200->"OK";403->"Forbidden";404->"Not Found";409->"Conflict";422->"Unprocessable Entity";else->"Error"}
+        val reason = when(code){200->"OK";400->"Bad Request";401->"Unauthorized";403->"Forbidden";404->"Not Found";409->"Conflict";422->"Unprocessable Entity";else->"Error"}
         out.write("HTTP/1.1 $code $reason\r\nContent-Type: $type\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
         out.write(body)
     }

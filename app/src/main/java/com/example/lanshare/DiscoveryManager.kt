@@ -8,10 +8,15 @@ import java.net.InetAddress
 import java.net.MulticastSocket
 import java.util.concurrent.atomic.AtomicBoolean
 
-class DiscoveryManager(private val context: Context, private val port: Int = 53317) {
+class DiscoveryManager(
+    private val context: Context,
+    private val servicePort: Int,
+    private val accessToken: String,
+    private val discoveryPort: Int = TransferProtocol.DEFAULT_PORT
+) {
     private val running = AtomicBoolean(false)
     private var lock: WifiManager.MulticastLock? = null
-    private val group = InetAddress.getByName("224.0.0.167")
+    private val group = InetAddress.getByName(TransferProtocol.DISCOVERY_GROUP)
     private val fingerprint = DeviceIdentity.fingerprint(context)
 
     fun start() {
@@ -27,8 +32,8 @@ class DiscoveryManager(private val context: Context, private val port: Int = 533
         lock?.let { if (it.isHeld) it.release() }
     }
 
-    fun addManual(host: String, alias: String = host) {
-        AppState.upsertPeer(Peer(alias, host, port, "manual:$host"))
+    fun addManual(host: String, port: Int = servicePort, token: String = accessToken, alias: String = host) {
+        AppState.upsertPeer(Peer(alias, host, port, "manual:" + host + ":" + port, token))
     }
 
     private fun payload(announce: Boolean): ByteArray = JSONObject()
@@ -37,7 +42,8 @@ class DiscoveryManager(private val context: Context, private val port: Int = 533
         .put("deviceModel", android.os.Build.MODEL)
         .put("deviceType", "mobile")
         .put("fingerprint", fingerprint)
-        .put("port", port)
+        .put("port", servicePort)
+        .put("token", accessToken)
         .put("protocol", "http")
         .put("announce", announce)
         .toString().toByteArray()
@@ -45,14 +51,15 @@ class DiscoveryManager(private val context: Context, private val port: Int = 533
     private fun announceLoop() {
         MulticastSocket().use { socket ->
             while (running.get()) {
-                runCatching { socket.send(DatagramPacket(payload(true), payload(true).size, group, port)) }
+                val bytes = payload(true)
+                runCatching { socket.send(DatagramPacket(bytes, bytes.size, group, discoveryPort)) }
                 Thread.sleep(3_000)
             }
         }
     }
 
     private fun listenLoop() {
-        MulticastSocket(port).use { socket ->
+        MulticastSocket(discoveryPort).use { socket ->
             socket.reuseAddress = true
             socket.joinGroup(group)
             socket.soTimeout = 2_000
@@ -68,13 +75,14 @@ class DiscoveryManager(private val context: Context, private val port: Int = 533
                         Peer(
                             alias = json.optString("alias", packet.address.hostAddress ?: "Device"),
                             host = packet.address.hostAddress ?: continue,
-                            port = json.optInt("port", port),
-                            fingerprint = fp
+                            port = json.optInt("port", TransferProtocol.DEFAULT_PORT),
+                            fingerprint = fp,
+                            token = json.optString("token", "")
                         )
                     )
                     if (json.optBoolean("announce", false)) {
                         val bytes = payload(false)
-                        socket.send(DatagramPacket(bytes, bytes.size, packet.address, port))
+                        socket.send(DatagramPacket(bytes, bytes.size, packet.address, discoveryPort))
                     }
                 } catch (_: java.net.SocketTimeoutException) {
                 } catch (_: Exception) {

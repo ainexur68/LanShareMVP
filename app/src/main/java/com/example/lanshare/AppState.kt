@@ -8,6 +8,7 @@ object AppState {
     val incoming = mutableStateOf<IncomingOffer?>(null)
     val transfer = mutableStateOf(TransferUiState())
     val sharedFiles = mutableStateListOf<SharedFile>()
+    val localEndpoint = mutableStateOf(LocalEndpoint())
 
     @Synchronized
     fun upsertPeer(peer: Peer) {
