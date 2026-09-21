@@ -76,7 +76,13 @@ class TransferServer(
         val filesJson = body.getJSONArray("files")
         val files = (0 until filesJson.length()).map { i ->
             val f = filesJson.getJSONObject(i)
-            IncomingFileMeta(f.getString("id"), f.getString("name"), f.getLong("size"), f.optString("mime", null), f.getString("sha256"))
+            IncomingFileMeta(
+                f.getString("id"),
+                f.getString("name"),
+                f.getLong("size"),
+                f.optString("mime", null),
+                f.optString("sha256").takeIf { it.isNotBlank() }
+            )
         }
         val existing = sessions[sessionId]
         if (existing != null && existing.senderHost == socket.inetAddress.hostAddress) {
@@ -85,7 +91,12 @@ class TransferServer(
         val approval = java.util.concurrent.CompletableFuture<Boolean>()
         val offer = IncomingOffer(sessionId, body.optString("senderAlias", socket.inetAddress.hostAddress), socket.inetAddress.hostAddress ?: "", files, approval)
         AppState.incoming.value = offer
-        AppState.transfer.value = TransferUiState(TransferStage.WAITING_APPROVAL, message = "收到来自 ${offer.senderAlias} 的发送请求")
+        AppState.transfer.value = TransferUiState(
+            stage = TransferStage.WAITING_APPROVAL,
+            message = "收到来自 ${offer.senderAlias} 的发送请求",
+            totalFiles = files.size,
+            direction = TransferDirection.RECEIVE
+        )
         val accepted = try { approval.get(120, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { false }
         if (!accepted) return HttpResponse.text(out, 403, "rejected")
         AppState.incoming.value = null
@@ -108,18 +119,37 @@ class TransferServer(
         val item = session.items[fileId] ?: return HttpResponse.text(out, 404, "file not found")
         if (offset != item.temp.length()) return HttpResponse.text(out, 409, "offset mismatch:${item.temp.length()}")
         val remaining = req.contentLength
-        RandomAccessFile(item.temp, "rw").use { raf ->
-            raf.seek(offset)
-            val buf = ByteArray(1024 * 1024)
-            var left = remaining
-            while (left > 0) {
-                val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
-                if (n < 0) throw EOFException("unexpected eof")
-                raf.write(buf, 0, n)
-                left -= n
-                AppState.transfer.value = TransferUiState(TransferStage.TRANSFERRING, item.meta.name, item.temp.length(), item.meta.size, "接收中")
+        synchronized(item) {
+            RandomAccessFile(item.temp, "rw").use { raf ->
+                raf.seek(offset)
+                val buf = ByteArray(1024 * 1024)
+                var left = remaining
+                while (left > 0) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                    if (n < 0) throw EOFException("unexpected eof")
+                    raf.write(buf, 0, n)
+                    if (item.digestedBytes == raf.filePointer - n) {
+                        item.digest.update(buf, 0, n)
+                        item.digestedBytes += n
+                    }
+                    left -= n
+                    item.progress.snapshot(item.temp.length(), item.meta.size)?.let { progress ->
+                        AppState.transfer.value = TransferUiState(
+                            stage = TransferStage.TRANSFERRING,
+                            fileName = item.meta.name,
+                            sent = item.temp.length(),
+                            total = item.meta.size,
+                            message = "接收中",
+                            bytesPerSecond = progress.bytesPerSecond,
+                            etaSeconds = progress.etaSeconds,
+                            completedFiles = session.items.values.count { it.verified },
+                            totalFiles = session.items.size,
+                            direction = TransferDirection.RECEIVE
+                        )
+                    }
+                }
+                raf.fd.sync()
             }
-            raf.fd.sync()
         }
         HttpResponse.json(out, 200, JSONObject().put("offset", item.temp.length()))
     }
@@ -131,14 +161,37 @@ class TransferServer(
         val session = sessions[sid] ?: return HttpResponse.text(out, 404, "session not found")
         val item = session.items[fileId] ?: return HttpResponse.text(out, 404, "file not found")
         if (item.temp.length() != item.meta.size) return HttpResponse.text(out, 409, "size mismatch")
-        AppState.transfer.value = TransferUiState(TransferStage.VERIFYING, item.meta.name, item.meta.size, item.meta.size, "SHA-256 校验中")
-        val actual = FileUtil.sha256(item.temp)
-        if (!actual.equals(item.meta.sha256, ignoreCase = true)) {
+        val expected = body.optString("sha256").takeIf { it.isNotBlank() }
+            ?: item.meta.sha256
+            ?: return HttpResponse.text(out, 400, "missing sha256")
+        AppState.transfer.value = TransferUiState(
+            stage = TransferStage.VERIFYING,
+            fileName = item.meta.name,
+            sent = item.meta.size,
+            total = item.meta.size,
+            message = "SHA-256 校验中",
+            completedFiles = session.items.values.count { it.verified },
+            totalFiles = session.items.size,
+            direction = TransferDirection.RECEIVE
+        )
+        val actual = synchronized(item) {
+            if (item.digestedBytes == item.temp.length()) item.digest.digest().toHex() else FileUtil.sha256(item.temp)
+        }
+        if (!actual.equals(expected, ignoreCase = true)) {
             return HttpResponse.json(out, 422, JSONObject().put("error", "sha256 mismatch").put("actual", actual))
         }
         session.publish(item)
         item.verified = true
-        AppState.transfer.value = TransferUiState(TransferStage.COMPLETE, item.meta.name, item.meta.size, item.meta.size, "已验证并保存到 Download/LanShare")
+        AppState.transfer.value = TransferUiState(
+            stage = if (session.items.values.all { it.verified }) TransferStage.COMPLETE else TransferStage.TRANSFERRING,
+            fileName = item.meta.name,
+            sent = item.meta.size,
+            total = item.meta.size,
+            message = "已验证并保存到 Download/LanShare",
+            completedFiles = session.items.values.count { it.verified },
+            totalFiles = session.items.size,
+            direction = TransferDirection.RECEIVE
+        )
         HttpResponse.json(out, 200, JSONObject().put("verified", true).put("sha256", actual))
     }
 
@@ -150,7 +203,14 @@ class TransferServer(
     }
 }
 
-private data class ReceiveItem(val meta: IncomingFileMeta, val temp: File, var verified: Boolean = false)
+private data class ReceiveItem(
+    val meta: IncomingFileMeta,
+    val temp: File,
+    var verified: Boolean = false,
+    val digest: MessageDigest = MessageDigest.getInstance("SHA-256"),
+    var digestedBytes: Long = 0,
+    val progress: TransferProgress = TransferProgress()
+)
 
 private class ReceiveSession(
     private val context: Context,
@@ -197,38 +257,66 @@ class TransferClient(private val context: Context) {
         Thread {
             val sessionId = UUID.randomUUID().toString()
             try {
-                AppState.transfer.value = TransferUiState(TransferStage.PREPARING, message = "计算 SHA-256")
+                AppState.transfer.value = TransferUiState(
+                    stage = TransferStage.PREPARING,
+                    message = "正在准备发送",
+                    totalFiles = files.size,
+                    direction = TransferDirection.SEND
+                )
                 val preparedFiles = files.mapIndexed { index, f ->
-                    val hash = FileUtil.sha256(context.contentResolver, f.uri)
-                    f.copy(sha256 = hash) to "f$index-${UUID.randomUUID()}"
+                    f to "f$index-${UUID.randomUUID()}"
                 }
                 val arr = JSONArray()
                 preparedFiles.forEach { (f, id) ->
                     require(f.size >= 0) { "无法确定文件大小: ${f.name}" }
-                    arr.put(JSONObject().put("id", id).put("name", f.name).put("size", f.size).put("mime", f.mime).put("sha256", f.sha256))
+                    arr.put(JSONObject().put("id", id).put("name", f.name).put("size", f.size).put("mime", f.mime))
                 }
                 val prep = JSONObject().put("sessionId", sessionId).put("senderAlias", DeviceIdentity.alias(context)).put("files", arr)
                 val response = request(peer, "POST", "/v1/prepare", body = prep.toString().toByteArray(), contentType = "application/json")
                 if (response.code != 200) error("对方拒绝或超时 (${response.code})")
                 val offsets = JSONObject(String(response.body)).getJSONObject("offsets")
-                for ((f, id) in preparedFiles) {
+                for ((fileIndex, prepared) in preparedFiles.withIndex()) {
+                    val (f, id) = prepared
                     var offset = offsets.optLong(id, 0L).coerceIn(0, f.size)
                     var retryCount = 0
+                    var streamedHash: String? = null
+                    var streamHashEligible = offset == 0L
                     while (offset < f.size) {
                         val bodyLength = f.size - offset
-                        AppState.transfer.value = TransferUiState(TransferStage.TRANSFERRING, f.name, offset, f.size, if (retryCount == 0) "发送中" else "网络恢复后续传中")
+                        AppState.transfer.value = TransferUiState(
+                            stage = TransferStage.TRANSFERRING,
+                            fileName = f.name,
+                            sent = offset,
+                            total = f.size,
+                            message = if (retryCount == 0) "发送中" else "网络恢复后续传中",
+                            completedFiles = fileIndex,
+                            totalFiles = preparedFiles.size,
+                            direction = TransferDirection.SEND
+                        )
                         try {
-                            val upload = upload(peer, sessionId, id, f, offset, bodyLength)
-                            if (upload.code == 200) {
-                                offset = JSONObject(String(upload.body)).getLong("offset")
+                            val upload = upload(peer, sessionId, id, f, offset, bodyLength, fileIndex, preparedFiles.size)
+                            if (upload.response.code == 200) {
+                                offset = JSONObject(String(upload.response.body)).getLong("offset")
+                                if (streamHashEligible && offset == f.size) streamedHash = upload.sha256
                                 retryCount = 0
                                 continue
                             }
-                            if (upload.code != 409) error("上传失败 ${upload.code}")
+                            streamHashEligible = false
+                            if (upload.response.code != 409) error("上传失败 ${upload.response.code}")
                         } catch (e: Exception) {
+                            streamHashEligible = false
                             retryCount++
                             if (retryCount > 30) throw e
-                            AppState.transfer.value = TransferUiState(TransferStage.TRANSFERRING, f.name, offset, f.size, "连接中断，等待恢复（$retryCount/30）")
+                            AppState.transfer.value = TransferUiState(
+                                stage = TransferStage.TRANSFERRING,
+                                fileName = f.name,
+                                sent = offset,
+                                total = f.size,
+                                message = "连接中断，等待恢复（$retryCount/30）",
+                                completedFiles = fileIndex,
+                                totalFiles = preparedFiles.size,
+                                direction = TransferDirection.SEND
+                            )
                             Thread.sleep(2_000)
                         }
 
@@ -247,22 +335,53 @@ class TransferClient(private val context: Context) {
                         }
                         if (!resumed) error("无法从接收端获取续传偏移")
                     }
-                    AppState.transfer.value = TransferUiState(TransferStage.VERIFYING, f.name, f.size, f.size, "等待接收端校验")
-                    val done = request(peer, "POST", "/v1/complete", JSONObject().put("sessionId", sessionId).put("fileId", id).toString().toByteArray(), "application/json")
+                    val sha256 = streamedHash ?: FileUtil.sha256(context.contentResolver, f.uri)
+                    AppState.transfer.value = TransferUiState(
+                        stage = TransferStage.VERIFYING,
+                        fileName = f.name,
+                        sent = f.size,
+                        total = f.size,
+                        message = "等待接收端校验",
+                        completedFiles = fileIndex,
+                        totalFiles = preparedFiles.size,
+                        direction = TransferDirection.SEND
+                    )
+                    val doneBody = JSONObject()
+                        .put("sessionId", sessionId)
+                        .put("fileId", id)
+                        .put("sha256", sha256)
+                    val done = request(peer, "POST", "/v1/complete", doneBody.toString().toByteArray(), "application/json")
                     if (done.code != 200) error("完整性校验失败 (${done.code})")
                 }
-                AppState.transfer.value = TransferUiState(TransferStage.COMPLETE, message = "发送完成，接收端 SHA-256 校验通过")
+                AppState.transfer.value = TransferUiState(
+                    stage = TransferStage.COMPLETE,
+                    message = "发送完成，接收端 SHA-256 校验通过",
+                    completedFiles = files.size,
+                    totalFiles = files.size,
+                    direction = TransferDirection.SEND
+                )
             } catch (e: Exception) {
                 AppState.transfer.value = TransferUiState(TransferStage.FAILED, message = e.message ?: "传输失败")
             }
         }.start()
     }
 
-    private fun upload(peer: Peer, sid: String, fileId: String, f: SharedFile, offset: Long, length: Long): Response {
+    private fun upload(
+        peer: Peer,
+        sid: String,
+        fileId: String,
+        f: SharedFile,
+        offset: Long,
+        length: Long,
+        completedFiles: Int,
+        totalFiles: Int
+    ): UploadResult {
         val conn = open(peer, "PUT", "/v1/upload?sessionId=$sid&fileId=$fileId&offset=$offset")
         conn.doOutput = true
         conn.setFixedLengthStreamingMode(length)
         conn.setRequestProperty("Content-Type", "application/octet-stream")
+        val digest = MessageDigest.getInstance("SHA-256")
+        val progress = TransferProgress()
         context.contentResolver.openInputStream(f.uri)!!.use { input ->
             skipFully(input, offset)
             conn.outputStream.use { out ->
@@ -272,12 +391,28 @@ class TransferClient(private val context: Context) {
                 while (left > 0) {
                     val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
                     if (n < 0) throw EOFException("source changed while sending")
-                    out.write(buf, 0, n); left -= n; sent += n
-                    AppState.transfer.value = TransferUiState(TransferStage.TRANSFERRING, f.name, sent, f.size, "发送中")
+                    out.write(buf, 0, n)
+                    digest.update(buf, 0, n)
+                    left -= n
+                    sent += n
+                    progress.snapshot(sent - offset, length)?.let { snapshot ->
+                        AppState.transfer.value = TransferUiState(
+                            stage = TransferStage.TRANSFERRING,
+                            fileName = f.name,
+                            sent = sent,
+                            total = f.size,
+                            message = "发送中",
+                            bytesPerSecond = snapshot.bytesPerSecond,
+                            etaSeconds = snapshot.etaSeconds,
+                            completedFiles = completedFiles,
+                            totalFiles = totalFiles,
+                            direction = TransferDirection.SEND
+                        )
+                    }
                 }
             }
         }
-        return read(conn)
+        return UploadResult(read(conn), digest.digest().toHex())
     }
 
     private fun skipFully(input: InputStream, target: Long) {
@@ -318,7 +453,10 @@ class TransferClient(private val context: Context) {
     }
 
     private data class Response(val code: Int, val body: ByteArray)
+    private data class UploadResult(val response: Response, val sha256: String)
 }
+
+private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
 private data class HttpRequest(
     val method: String,

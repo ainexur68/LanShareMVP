@@ -1,23 +1,23 @@
-# LanShare MVP
+# LanShare
 
-一个极简 Android 局域网文件传输 MVP：同一 APK 既能发送也能接收，重点解决“从系统分享菜单直接把文件发到同一局域网的另一台设备”。
+一个简洁的 Android 局域网文件传输工具：同一 APK 既能发送也能接收，重点解决“从系统分享菜单直接把文件发到同一局域网的另一台设备”。
 
-## MVP 已实现范围
+## V0.2 已实现范围
 
 - Android `ACTION_SEND` / `ACTION_SEND_MULTIPLE` 系统分享入口，直接消费 `content://` URI，不要求真实文件路径。
 - App 内支持一次选择多个文件，和系统分享入口共用同一发送队列。
-- 同一局域网 UDP Multicast 自动发现；发现失败可手动输入 IP。
+- 默认扫描版本化 LanShare 二维码连接；同一局域网 UDP Multicast 自动发现，手动 IP 作为折叠兜底。
 - 发现广播携带接收端动态服务端口和 4 位数字短期访问口令；端口占用时自动尝试备用端口。
 - 接收端必须人工确认。
 - 流式传输，不把整文件加载进内存。
 - 中断续传：接收端 `.part` 临时文件长度即续传 offset；同一 session 重试时返回 offset。
-- 完整性：发送前 SHA-256；接收完重新计算；不一致返回 422，不发布到 Download。
+- 完整性：正常路径在发送和接收流中同步计算 SHA-256；不一致返回 422，不发布到 Download；断点场景按需回退完整计算。
 - 校验成功后写入 `Download/LanShare`。
 - 接收面板可调用系统文件管理器打开 `Download/LanShare`，无直接打开能力时回退到目录选择器。
 - 前台 Service 保持接收服务器/发现服务存活。
 - 单 APK 双角色。
-- Compose 响应式 UI：窄屏单列；>=720dp 宽屏双栏，适配手机竖屏/车机横屏。
-- LanDrop 风格的卡片化发送/接收状态 UI、手动地址和 4 位数字口令入口。
+- Compose 响应式 UI：手机为不滚动的分享首页与独立连接页；>=720dp 的车机/宽屏直接展开双栏。
+- 文件列表、手动连接与传输详情采用内部可滚动弹层；活动传输通过临时悬浮卡展示速度、ETA 和文件计数。
 - 首版不包含音乐在线播放。
 
 ## 设计来源
@@ -57,9 +57,17 @@ Windows：
 .\gradlew.bat :app:assembleDebug
 ```
 
+### Docker 验证
+
+```bash
+docker build --progress=plain -t lanshare-verify .
+```
+
+镜像构建会执行单元测试、Lint 和 Debug APK 编译；同一流程也由 GitHub Actions 执行。
+
 ## 当前验证状态
 
-融合后已执行：`python scripts/static_verify.py`、`:app:testDebugUnitTest`、`:app:lintDebug`、`:app:assembleDebug`。
+PR 必须执行：`python scripts/static_verify.py`、`:app:testDebugUnitTest`、`:app:lintDebug`、`:app:assembleDebug` 和 Docker 构建。
 
 当前环境没有两台 Android 真机，因此尚未完成真实双机局域网传输验收；首次真机验收仍需按 `docs/TEST_PLAN.md` 执行。
 

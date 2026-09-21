@@ -38,7 +38,7 @@ class DiscoveryManager(
 
     private fun payload(announce: Boolean): ByteArray = JSONObject()
         .put("alias", DeviceIdentity.alias(context))
-        .put("version", "lanshare-0.1")
+        .put("version", "lanshare-0.2")
         .put("deviceModel", android.os.Build.MODEL)
         .put("deviceType", "mobile")
         .put("fingerprint", fingerprint)

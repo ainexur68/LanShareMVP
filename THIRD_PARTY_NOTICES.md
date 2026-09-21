@@ -6,7 +6,8 @@ remain under their own licenses and notices.
 
 The current direct dependencies are declared in
 [`app/build.gradle.kts`](app/build.gradle.kts), including AndroidX/Jetpack
-artifacts, Kotlin/Compose tooling, and JUnit. When redistributing a built
+artifacts, CameraX, ML Kit Barcode Scanning, ZXing Core, Kotlin/Compose tooling,
+and JUnit. When redistributing a built
 APK or changing dependencies, regenerate the dependency/license inventory
 from the exact resolved versions and include any required upstream notices.
 
