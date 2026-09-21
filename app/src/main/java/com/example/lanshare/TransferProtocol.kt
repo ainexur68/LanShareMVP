@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.*
 import java.net.HttpURLConnection
@@ -64,6 +65,10 @@ class TransferServer(
                 request.method == "POST" && request.path == "/v1/cancel" -> cancel(request, output)
                 else -> HttpResponse.text(output, 404, "not found")
             }
+        } catch (e: TransferProtocolValidation.ProtocolValidationException) {
+            HttpResponse.json(output, 400, JSONObject().put("error", e.message ?: "invalid request"))
+        } catch (e: JSONException) {
+            HttpResponse.json(output, 400, JSONObject().put("error", e.message ?: "invalid JSON"))
         } catch (e: Exception) {
             HttpResponse.json(output, 500, JSONObject().put("error", e.message ?: "server error"))
         }
@@ -71,25 +76,19 @@ class TransferServer(
     }
 
     private fun prepare(req: HttpRequest, socket: Socket, out: OutputStream) {
-        val body = JSONObject(String(req.body ?: ByteArray(0)))
-        val sessionId = body.optString("sessionId").ifBlank { UUID.randomUUID().toString() }
-        val filesJson = body.getJSONArray("files")
-        val files = (0 until filesJson.length()).map { i ->
-            val f = filesJson.getJSONObject(i)
-            IncomingFileMeta(
-                f.getString("id"),
-                f.getString("name"),
-                f.getLong("size"),
-                f.optString("mime", null),
-                f.optString("sha256").takeIf { it.isNotBlank() }
-            )
-        }
+        val body = jsonBody(req, out) ?: return
+        val parsed = TransferProtocolValidation.parsePrepare(
+            body = body,
+            defaultSenderAlias = socket.inetAddress.hostAddress ?: "Unknown device"
+        )
+        val sessionId = parsed.sessionId
+        val files = parsed.files
         val existing = sessions[sessionId]
         if (existing != null && existing.senderHost == socket.inetAddress.hostAddress) {
             return HttpResponse.json(out, 200, existing.describe())
         }
         val approval = java.util.concurrent.CompletableFuture<Boolean>()
-        val offer = IncomingOffer(sessionId, body.optString("senderAlias", socket.inetAddress.hostAddress), socket.inetAddress.hostAddress ?: "", files, approval)
+        val offer = IncomingOffer(sessionId, parsed.senderAlias, socket.inetAddress.hostAddress ?: "", files, approval)
         AppState.incoming.value = offer
         AppState.transfer.value = TransferUiState(
             stage = TransferStage.WAITING_APPROVAL,
@@ -106,63 +105,80 @@ class TransferServer(
     }
 
     private fun status(req: HttpRequest, out: OutputStream) {
-        val sid = req.query["sessionId"] ?: return HttpResponse.text(out, 400, "missing sessionId")
+        val sid = TransferProtocolValidation.requireSessionId(req.query["sessionId"])
         val session = sessions[sid] ?: return HttpResponse.text(out, 404, "session not found")
         HttpResponse.json(out, 200, session.describe())
     }
 
     private fun upload(req: HttpRequest, input: InputStream, out: OutputStream) {
-        val sid = req.query["sessionId"] ?: return HttpResponse.text(out, 400, "missing sessionId")
-        val fileId = req.query["fileId"] ?: return HttpResponse.text(out, 400, "missing fileId")
-        val offset = req.query["offset"]?.toLongOrNull() ?: 0L
+        val sid = TransferProtocolValidation.requireSessionId(req.query["sessionId"])
+        val fileId = TransferProtocolValidation.requireFileId(req.query["fileId"])
+        val offset = TransferProtocolValidation.requireOffset(req.query["offset"])
+        val contentLength = TransferProtocolValidation.requireContentLength(req.hasContentLength, req.contentLength)
         val session = sessions[sid] ?: return HttpResponse.text(out, 404, "session not found")
         val item = session.items[fileId] ?: return HttpResponse.text(out, 404, "file not found")
-        if (offset != item.temp.length()) return HttpResponse.text(out, 409, "offset mismatch:${item.temp.length()}")
-        val remaining = req.contentLength
+        var conflictOffset: Long? = null
+        var writtenOffset: Long? = null
         synchronized(item) {
-            RandomAccessFile(item.temp, "rw").use { raf ->
-                raf.seek(offset)
-                val buf = ByteArray(1024 * 1024)
-                var left = remaining
-                while (left > 0) {
-                    val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
-                    if (n < 0) throw EOFException("unexpected eof")
-                    raf.write(buf, 0, n)
-                    if (item.digestedBytes == raf.filePointer - n) {
-                        item.digest.update(buf, 0, n)
-                        item.digestedBytes += n
-                    }
-                    left -= n
-                    item.progress.snapshot(item.temp.length(), item.meta.size)?.let { progress ->
-                        AppState.transfer.value = TransferUiState(
-                            stage = TransferStage.TRANSFERRING,
-                            fileName = item.meta.name,
-                            sent = item.temp.length(),
-                            total = item.meta.size,
-                            message = "接收中",
-                            bytesPerSecond = progress.bytesPerSecond,
-                            etaSeconds = progress.etaSeconds,
-                            completedFiles = session.items.values.count { it.verified },
-                            totalFiles = session.items.size,
-                            direction = TransferDirection.RECEIVE
+            val currentOffset = item.temp.length()
+            val validation = TransferProtocolValidation.validateUpload(
+                offset = offset,
+                contentLength = contentLength,
+                currentOffset = currentOffset,
+                declaredSize = item.meta.size
+            )
+            if (!validation.acceptedOffset) {
+                conflictOffset = validation.currentOffset
+            } else {
+                RandomAccessFile(item.temp, "rw").use { raf ->
+                    raf.seek(offset)
+                    val buf = ByteArray(1024 * 1024)
+                    var left = contentLength
+                    while (left > 0) {
+                        val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                        if (n < 0) throw TransferProtocolValidation.ProtocolValidationException(
+                            "request body ended before Content-Length"
                         )
+                        if (n == 0) continue
+                        raf.write(buf, 0, n)
+                        if (item.digestedBytes == raf.filePointer - n) {
+                            item.digest.update(buf, 0, n)
+                            item.digestedBytes += n
+                        }
+                        left -= n
+                        item.progress.snapshot(item.temp.length(), item.meta.size)?.let { progress ->
+                            AppState.transfer.value = TransferUiState(
+                                stage = TransferStage.TRANSFERRING,
+                                fileName = item.meta.name,
+                                sent = item.temp.length(),
+                                total = item.meta.size,
+                                message = "接收中",
+                                bytesPerSecond = progress.bytesPerSecond,
+                                etaSeconds = progress.etaSeconds,
+                                completedFiles = session.items.values.count { it.verified },
+                                totalFiles = session.items.size,
+                                direction = TransferDirection.RECEIVE
+                            )
+                        }
                     }
+                    raf.fd.sync()
                 }
-                raf.fd.sync()
+                writtenOffset = item.temp.length()
             }
         }
-        HttpResponse.json(out, 200, JSONObject().put("offset", item.temp.length()))
+        if (conflictOffset != null) {
+            return HttpResponse.text(out, 409, "offset mismatch:$conflictOffset")
+        }
+        HttpResponse.json(out, 200, JSONObject().put("offset", writtenOffset ?: offset))
     }
 
     private fun complete(req: HttpRequest, out: OutputStream) {
-        val body = JSONObject(String(req.body ?: ByteArray(0)))
-        val sid = body.getString("sessionId")
-        val fileId = body.getString("fileId")
-        val session = sessions[sid] ?: return HttpResponse.text(out, 404, "session not found")
-        val item = session.items[fileId] ?: return HttpResponse.text(out, 404, "file not found")
+        val body = jsonBody(req, out) ?: return
+        val parsed = TransferProtocolValidation.parseComplete(body)
+        val session = sessions[parsed.sessionId] ?: return HttpResponse.text(out, 404, "session not found")
+        val item = session.items[parsed.fileId] ?: return HttpResponse.text(out, 404, "file not found")
         if (item.temp.length() != item.meta.size) return HttpResponse.text(out, 409, "size mismatch")
-        val expected = body.optString("sha256").takeIf { it.isNotBlank() }
-            ?: item.meta.sha256
+        val expected = parsed.sha256 ?: item.meta.sha256
             ?: return HttpResponse.text(out, 400, "missing sha256")
         AppState.transfer.value = TransferUiState(
             stage = TransferStage.VERIFYING,
@@ -196,10 +212,26 @@ class TransferServer(
     }
 
     private fun cancel(req: HttpRequest, out: OutputStream) {
-        val sid = req.query["sessionId"] ?: return HttpResponse.text(out, 400, "missing sessionId")
+        val sid = TransferProtocolValidation.requireSessionId(req.query["sessionId"])
         sessions.remove(sid)
         AppState.transfer.value = TransferUiState(TransferStage.CANCELLED, message = "传输已取消")
         HttpResponse.text(out, 200, "cancelled")
+    }
+
+    private fun jsonBody(req: HttpRequest, out: OutputStream): JSONObject? {
+        if (!req.hasContentLength) {
+            HttpResponse.text(out, 400, "missing Content-Length")
+            return null
+        }
+        if (req.contentLength < 0) {
+            HttpResponse.text(out, 400, "invalid Content-Length")
+            return null
+        }
+        if (req.contentLength > TransferProtocolValidation.MAX_METADATA_BODY_BYTES) {
+            HttpResponse.text(out, 413, "metadata body too large")
+            return null
+        }
+        return JSONObject(String(req.body ?: ByteArray(0), Charsets.UTF_8))
     }
 }
 
@@ -218,9 +250,14 @@ private class ReceiveSession(
     val senderHost: String,
     files: List<IncomingFileMeta>
 ) {
+    private val tempDir = TransferProtocolValidation
+        .sessionDirectory(File(context.cacheDir, "incoming"), sessionId)
+        .apply { mkdirs() }
+
     val items = files.associate { meta ->
-        val tempDir = File(context.cacheDir, "incoming/$sessionId").apply { mkdirs() }
-        meta.id to ReceiveItem(meta, File(tempDir, "${meta.id}.part"))
+        val part = TransferProtocolValidation.partFile(tempDir, meta.id)
+        TransferProtocolValidation.ensurePartFile(part, meta.size)
+        meta.id to ReceiveItem(meta, part)
     }
 
     fun describe(): JSONObject {
@@ -458,13 +495,14 @@ class TransferClient(private val context: Context) {
 
 private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
-private data class HttpRequest(
+internal data class HttpRequest(
     val method: String,
     val path: String,
     val query: Map<String, String>,
     val headers: Map<String, String>,
     val body: ByteArray?,
-    val contentLength: Long
+    val contentLength: Long,
+    val hasContentLength: Boolean
 ) {
     companion object {
         fun read(input: InputStream): HttpRequest? {
@@ -489,12 +527,23 @@ private data class HttpRequest(
             val headers = lines.drop(1).mapNotNull {
                 val i = it.indexOf(':'); if (i > 0) it.substring(0, i).trim().lowercase() to it.substring(i + 1).trim() else null
             }.toMap()
-            val length = headers["content-length"]?.toLongOrNull() ?: 0L
-            val body = if (length > 0 && length <= 4 * 1024 * 1024) ByteArray(length.toInt()).also { buf ->
+            val hasContentLength = headers.containsKey("content-length")
+            val length = if (hasContentLength) {
+                headers["content-length"]?.toLongOrNull() ?: -1L
+            } else {
+                0L
+            }
+            val method = first.getOrElse(0) { "" }
+            val shouldBufferBody = !(method == "PUT" && path == "/v1/upload")
+            val body = if (shouldBufferBody && length == 0L && hasContentLength) {
+                ByteArray(0)
+            } else if (shouldBufferBody && length > 0 && length <= TransferProtocolValidation.MAX_METADATA_BODY_BYTES) {
+                ByteArray(length.toInt()).also { buf ->
                 var off = 0
                 while (off < buf.size) { val n = input.read(buf, off, buf.size - off); if (n < 0) throw EOFException(); off += n }
+                }
             } else null
-            return HttpRequest(first[0], path, query, headers, body, length)
+            return HttpRequest(method, path, query, headers, body, length, hasContentLength)
         }
     }
 }
@@ -503,7 +552,7 @@ private object HttpResponse {
     fun text(out: OutputStream, code: Int, text: String) = bytes(out, code, "text/plain; charset=utf-8", text.toByteArray())
     fun json(out: OutputStream, code: Int, json: JSONObject) = bytes(out, code, "application/json", json.toString().toByteArray())
     private fun bytes(out: OutputStream, code: Int, type: String, body: ByteArray) {
-        val reason = when(code){200->"OK";400->"Bad Request";401->"Unauthorized";403->"Forbidden";404->"Not Found";409->"Conflict";422->"Unprocessable Entity";else->"Error"}
+        val reason = when(code){200->"OK";400->"Bad Request";401->"Unauthorized";403->"Forbidden";404->"Not Found";409->"Conflict";413->"Payload Too Large";422->"Unprocessable Entity";else->"Error"}
         out.write("HTTP/1.1 $code $reason\r\nContent-Type: $type\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
         out.write(body)
     }

@@ -20,7 +20,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.lanshare"
+        applicationId = "top.nexur.lanshare"
         minSdk = 29
         targetSdk = 35
         versionCode = 2

@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun consumeShareIntent(intent: Intent?) {
+        val isExternalShare = intent?.action == Intent.ACTION_SEND || intent?.action == Intent.ACTION_SEND_MULTIPLE
         val uris: List<Uri> = when (intent?.action) {
             Intent.ACTION_SEND -> {
                 val uri = if (Build.VERSION.SDK_INT >= 33) {
@@ -71,17 +72,31 @@ class MainActivity : ComponentActivity() {
             }
             else -> emptyList()
         }
-        acceptUris(uris)
+        if (isExternalShare) {
+            // A new share intent represents a new task. Replace the old selection even when
+            // the sender supplied no URI, otherwise stale files could be sent accidentally.
+            acceptUris(uris, replaceExisting = true)
+        }
     }
 
-    private fun acceptUris(uris: List<Uri>) {
-        if (uris.isEmpty()) return
-        AppState.sharedFiles.clear()
-        uris.forEach { uri ->
+    private fun acceptUris(uris: List<Uri>, replaceExisting: Boolean = false) {
+        if (uris.isEmpty()) {
+            if (replaceExisting) AppState.sharedFiles.clear()
+            return
+        }
+        val incoming = uris.mapNotNull { uri ->
             runCatching {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            AppState.sharedFiles.add(FileUtil.meta(contentResolver, uri))
+            runCatching { FileUtil.meta(contentResolver, uri) }.getOrNull()
         }
+        val merged = SharedFileSelection.merge(
+            existing = AppState.sharedFiles.toList(),
+            incoming = incoming,
+            replaceExisting = replaceExisting,
+            key = { it.uri.toString() }
+        )
+        AppState.sharedFiles.clear()
+        AppState.sharedFiles.addAll(merged)
     }
 }
