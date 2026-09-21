@@ -21,9 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check out source
+      - name: Check out main
         uses: actions/checkout@v5
         with:
+          ref: main
           persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -40,9 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out source
+      - name: Check out main
         uses: actions/checkout@v5
         with:
+          ref: main
           persist-credentials: false
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -69,9 +71,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out source
+      - name: Check out main
         uses: actions/checkout@v5
         with:
+          ref: main
           persist-credentials: false
       - name: Build verification image
         run: docker build --progress=plain --tag lanshare-verify .
