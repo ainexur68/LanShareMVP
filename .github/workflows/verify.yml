@@ -1,4 +1,5 @@
 name: PR Verification
+run-name: "PR Verification / PR #${{ github.event.pull_request.number || 'manual' }}"
 
 on:
   pull_request:
