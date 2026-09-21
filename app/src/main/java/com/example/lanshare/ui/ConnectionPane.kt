@@ -34,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,7 +66,13 @@ internal fun ConnectionPane(
 ) {
     val context = LocalContext.current
     val endpoint = AppState.localEndpoint.value
-    val localHost = remember(endpoint) { NetworkAddress.localIpv4() }
+    var localHost by remember { mutableStateOf(NetworkAddress.localIpv4(context)) }
+
+    DisposableEffect(context) {
+        val stopObserving = NetworkAddress.observe(context) { localHost = it }
+        onDispose(stopObserving)
+    }
+
     val payload = remember(endpoint, localHost) {
         if (localHost != null && endpoint.token.isNotBlank()) {
             PairingPayload(
@@ -173,7 +180,7 @@ internal fun ConnectionPane(
                         } else {
                             Surface(color = AppBackground, shape = RoundedCornerShape(20.dp)) {
                                 Text(
-                                    "正在准备本机连接信息…\n请确认已连接 Wi-Fi",
+                                    "正在准备本机连接信息…\n请确认已连接 Wi-Fi 或有线网络",
                                     modifier = Modifier.size(qrSize).padding(20.dp),
                                     textAlign = TextAlign.Center,
                                     color = Muted
