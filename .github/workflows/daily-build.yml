@@ -1,0 +1,77 @@
+name: Daily Build
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-build
+  cancel-in-progress: false
+
+jobs:
+  static:
+    name: Static verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Run repository static verification
+        run: python3 scripts/static_verify.py
+      - name: Check whitespace errors
+        run: git diff --check
+
+  android:
+    name: Android test, lint and assemble
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+      - name: Run unit tests, lint and debug assemble
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LanShare-debug-apk-daily
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  docker:
+    name: Docker verification
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Build verification image
+        run: docker build --progress=plain --tag lanshare-verify .

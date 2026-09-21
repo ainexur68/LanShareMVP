@@ -8,6 +8,12 @@ import java.net.InetAddress
 import java.net.MulticastSocket
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal object DiscoveryProtocol {
+    const val VERSION = "lanshare-0.2"
+
+    fun isCompatible(version: String): Boolean = version == VERSION
+}
+
 class DiscoveryManager(
     private val context: Context,
     private val servicePort: Int,
@@ -38,7 +44,7 @@ class DiscoveryManager(
 
     private fun payload(announce: Boolean): ByteArray = JSONObject()
         .put("alias", DeviceIdentity.alias(context))
-        .put("version", "lanshare-0.1")
+        .put("version", DiscoveryProtocol.VERSION)
         .put("deviceModel", android.os.Build.MODEL)
         .put("deviceType", "mobile")
         .put("fingerprint", fingerprint)
@@ -69,6 +75,7 @@ class DiscoveryManager(
                     val packet = DatagramPacket(buf, buf.size)
                     socket.receive(packet)
                     val json = JSONObject(String(packet.data, packet.offset, packet.length))
+                    if (!DiscoveryProtocol.isCompatible(json.optString("version"))) continue
                     val fp = json.optString("fingerprint")
                     if (fp.isBlank() || fp == fingerprint) continue
                     AppState.upsertPeer(

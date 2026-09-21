@@ -21,12 +21,19 @@ data class SharedFile(
 
 enum class TransferStage { IDLE, PREPARING, WAITING_APPROVAL, TRANSFERRING, VERIFYING, COMPLETE, FAILED, CANCELLED }
 
+enum class TransferDirection { SEND, RECEIVE }
+
 data class TransferUiState(
     val stage: TransferStage = TransferStage.IDLE,
     val fileName: String = "",
     val sent: Long = 0,
     val total: Long = 0,
-    val message: String = ""
+    val message: String = "",
+    val bytesPerSecond: Long = 0,
+    val etaSeconds: Long? = null,
+    val completedFiles: Int = 0,
+    val totalFiles: Int = 0,
+    val direction: TransferDirection = TransferDirection.SEND
 )
 
 data class LocalEndpoint(

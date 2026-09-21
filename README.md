@@ -14,7 +14,26 @@
 
 LanShare 是一个面向 Android 设备的局域网文件传输 MVP。发送端和接收端使用同一个 APK，通过局域网发现或手动连接建立传输，文件只在设备之间直接流转，不依赖云服务器、账号或互联网中继。
 
-当前版本为 `0.1.0-mvp`，重点验证一条可审计的文件传输链路：**系统分享 → 设备发现 → 接收确认 → 流式传输 → SHA-256 校验 → 写入 Downloads**。
+当前版本为 `0.2.0-mvp`，重点验证一条可审计的文件传输链路：**系统分享 → 二维码/设备发现 → 接收确认 → 流式传输 → SHA-256 校验 → 写入 Downloads**。
+
+## V0.2 已实现范围
+
+- Android `ACTION_SEND` / `ACTION_SEND_MULTIPLE` 系统分享入口，直接消费 `content://` URI，不要求真实文件路径。
+- App 内支持一次选择多个文件，和系统分享入口共用同一发送队列。
+- 默认扫描版本化 LanShare 二维码连接；同一局域网 UDP Multicast 自动发现，手动 IP 作为折叠兜底。
+- 二维码基于当前 Wi-Fi/以太网网络地址生成，网络变化时自动刷新。
+- 发现广播携带接收端动态服务端口和 4 位数字短期访问口令；端口占用时自动尝试备用端口。
+- 接收端必须人工确认。
+- 流式传输，不把整文件加载进内存。
+- 中断续传：接收端 `.part` 临时文件长度即续传 offset；同一 session 重试时返回 offset。
+- 完整性：正常路径在发送和接收流中同步计算 SHA-256；不一致返回 422，不发布到 Download；断点场景按需回退完整计算。
+- 校验成功后写入 `Download/LanShare`。
+- 接收面板可调用系统文件管理器打开 `Download/LanShare`，无直接打开能力时回退到目录选择器。
+- 前台 Service 保持接收服务器/发现服务存活。
+- 单 APK 双角色。
+- Compose 响应式 UI：手机为不滚动的分享首页与独立连接页；>=720dp 的车机/宽屏直接展开双栏。
+- 文件列表、手动连接与传输详情采用内部可滚动弹层；活动传输通过临时悬浮卡展示速度、ETA 和文件计数。
+- 首版不包含音乐在线播放。
 
 ## 目录
 
@@ -37,7 +56,7 @@ LanShare 只解决一个明确问题：在同一局域网内，把手机或其�
 
 - **单 APK 双角色**：同一个安装包既可以发送，也可以接收。
 - **系统分享优先**：在文件管理器、相册等应用中直接通过 Android 分享菜单发送。
-- **局域网直连**：使用 UDP Multicast 自动发现，发现失败时支持手动输入地址。
+- **局域网直连**：默认使用版本化二维码配对，UDP Multicast 自动发现和手动输入地址作为兜底。
 - **接收端可控**：接收请求必须由用户确认，不会静默写入文件。
 - **可靠性优先**：流式传输、进程内断点续传、完整 SHA-256 校验和失败不落盘。
 
@@ -49,15 +68,15 @@ LanShare 只解决一个明确问题：在同一局域网内，把手机或其�
 | --- | --- |
 | 发送入口 | 支持 `ACTION_SEND`、`ACTION_SEND_MULTIPLE`；支持 App 内一次选择多个文件 |
 | 文件来源 | 直接消费 Android `content://` URI，不依赖真实文件路径 |
-| 设备发现 | UDP Multicast `224.0.0.167:53317` 自动发现 |
-| 手动连接 | 支持 IP、实际服务端口和 4 位数字访问口令 |
+| 设备连接 | 默认扫描版本化二维码；UDP Multicast `224.0.0.167:53317` 自动发现；支持手动连接兜底 |
+| 配对信息 | 当前 Wi-Fi/以太网 IPv4、实际服务端口和 4 位数字访问口令；网络变化时刷新二维码 |
 | 接收控制 | 接收端显示请求并人工确认，拒绝后发送端明确失败 |
 | 传输方式 | HTTP 流式传输，使用 1 MiB 缓冲区，不将整文件加载到内存 |
 | 断点续传 | 同一 `sessionId` 内由接收端根据 `.part` 文件长度决定 offset |
-| 完整性校验 | 发送端提供 SHA-256；接收端校验字节数和 SHA-256 后才算成功 |
+| 完整性校验 | 发送/接收流同步计算 SHA-256；接收端校验字节数和 SHA-256 后才算成功 |
 | 文件落盘 | 校验通过后写入 `Download/LanShare`，失败文件不会发布到正式目录 |
 | 后台运行 | 使用前台 Service 维持接收服务和发现服务 |
-| UI | Jetpack Compose；支持窄屏单列和宽屏双栏布局 |
+| UI | Jetpack Compose；手机不滚动分享首页、独立连接页、详情弹层；宽屏双栏和传输悬浮卡 |
 
 ## 快速使用
 
@@ -71,7 +90,7 @@ LanShare 只解决一个明确问题：在同一局域网内，把手机或其�
 
 1. 在两台设备上打开 LanShare。
 2. 在发送设备的文件管理器或相册中选择文件，点击 **分享 → LanShare**；也可以在 LanShare 内选择文件。
-3. 选择发现到的接收设备。
+3. 在发送设备的连接页扫描接收设备显示的二维码，或选择自动发现到的接收设备。
 4. 在接收设备上查看文件名和大小，确认接收。
 5. 等待传输和完整性校验完成。
 6. 在接收设备的 `Download/LanShare` 目录查看文件。
@@ -88,7 +107,7 @@ LanShare 只解决一个明确问题：在同一局域网内，把手机或其�
 | Compile / Target SDK | API 35 |
 | JDK | 17 或更高版本 |
 | Android 构建插件 | 8.8.2 |
-| Gradle | 使用仓库自带 Wrapper，当前为 9.0.0 |
+| Gradle | 使用仓库自带 Wrapper，当前为 8.10.2 |
 | Python | 仅运行静态校验脚本时需要 Python 3 |
 
 首次构建需要联网下载 Gradle 和 Maven 依赖。
@@ -117,6 +136,14 @@ chmod +x gradlew
 ```
 
 构建产物：`app/build/outputs/apk/debug/app-debug.apk`。
+
+### Docker 验证
+
+```bash
+docker build --progress=plain -t lanshare-verify .
+```
+
+镜像构建会执行单元测试、Lint 和 Debug APK 编译；同一流程也由 GitHub Actions 执行。
 
 ### 安装到已连接设备
 
@@ -157,11 +184,12 @@ sequenceDiagram
 
 ## 协议概览
 
-当前协议版本为 `lanshare-0.1`，借鉴了局域网发现和分阶段传输的设计思路，但不保证与 LocalSend 官方客户端互操作。
+当前协议版本为 `lanshare-0.2`，借鉴了局域网发现和分阶段传输的设计思路，但不保证与 LocalSend 官方客户端互操作。
 
 | 阶段 | 方法与地址 | 作用 |
 | --- | --- | --- |
-| Discovery | UDP `224.0.0.167:53317` | 广播设备、设备别名、实际 TCP 端口和短期 token |
+| Discovery | UDP `224.0.0.167:53317` | 广播 `lanshare-0.2` 设备、设备别名、实际 TCP 端口和短期 token |
+| QR Pairing | `lanshare://pair?...` | 交换当前 LAN IPv4、端口、短期 token、设备指纹和别名 |
 | Prepare | `POST /v1/prepare` | 提交 session、文件元数据并等待接收端确认 |
 | Status | `GET /v1/status?sessionId=...` | 查询每个文件当前 `.part` 长度 |
 | Upload | `PUT /v1/upload?sessionId=...&fileId=...&offset=...` | 从接收端确认的 offset 开始上传剩余字节 |
@@ -176,13 +204,16 @@ sequenceDiagram
 
 | 路径或组件 | 职责 |
 | --- | --- |
-| `MainActivity` | Compose UI、系统分享 Intent、文件选择、手动连接和接收确认 |
+| `MainActivity` | 系统分享 Intent、文件选择、通知权限和 Compose 入口 |
+| `ui/*` | 分享首页、独立连接页、宽屏双栏、详情弹层、传输悬浮卡和 CameraX 扫码 |
+| `PairingPayload` / `QrCodeGenerator` | 版本化二维码连接信息的生成、严格解析和校验 |
 | `TransferService` | 前台 Service 生命周期、访问口令和 TCP 服务端口 |
 | `DiscoveryManager` | UDP Multicast 发现与设备信息交换 |
 | `TransferClient` | 发起 prepare、upload、status、complete、cancel 请求 |
 | `TransferServer` | 接收端最小 HTTP 服务 |
 | `ReceiveSession` | `.part` 文件、offset、校验和 MediaStore 发布 |
 | `FileUtil` | 文件元数据、SHA-256 和文件名净化 |
+| `TransferProgress` | 进度节流、吞吐率、ETA 和文件计数快照 |
 | `app/src/test` | 访问口令、地址解析、接收目录等单元测试 |
 
 核心设计文档：
@@ -199,7 +230,7 @@ sequenceDiagram
 
 ## 验证状态
 
-仓库当前提供静态验证基线，[`STATIC_VERIFY.txt`](STATIC_VERIFY.txt) 记录的检查结果为 `STATIC_VERIFY_PASS`，覆盖分享入口、前台服务、协议端点、SHA-256 失败保护、Downloads 目录、访问口令和动态端口等关键不变量。
+仓库当前提供静态验证基线，[`STATIC_VERIFY.txt`](STATIC_VERIFY.txt) 记录的检查结果为 `STATIC_VERIFY_PASS`，覆盖分享入口、前台服务、协议端点、SHA-256 失败保护、Downloads 目录、访问口令、动态端口和版本化二维码等关键不变量。GitHub Actions 同时执行静态检查、Android 单测/Lint/Debug APK 构建和 Docker 验证。
 
 构建和单元测试请按上面的命令执行。当前项目不把编译通过或单元测试通过等同于真实传输成功；至少需要两台 Android 10+ 真机才能完成局域网发现、人工确认、断点续传和文件 hash 的端到端验收。验收步骤和证据要求见 [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md)。
 
@@ -219,10 +250,10 @@ sequenceDiagram
 
 | 版本 | 方向 | 计划内容 |
 | --- | --- | --- |
-| 0.1 | MVP | 系统分享、局域网发现、人工确认、流式传输、进程内续传、SHA-256 校验和 Downloads 存储 |
-| 0.2 | Reliability | session 持久化、临时文件 TTL 清理、更细粒度进度与取消、大量文件策略 |
-| 0.3 | Security | TLS、自签名证书指纹、首次配对、来源 IP 与 session/token 绑定 |
-| 0.4 | Media | 音乐浏览、HTTP Range 流式播放；根据目标设备再评估 DLNA/UPnP |
+| 0.2 | Share UX + Pairing + Throughput | 当前版本：二维码配对、独立连接页、宽屏双栏、传输详情、流式 SHA-256 和进度指标 |
+| 0.3 | Reliability | session 持久化、临时文件 TTL 清理、更细粒度进度与取消、大量文件策略 |
+| 0.4 | Security | TLS、自签名证书指纹、首次配对、来源 IP 与 session/token 绑定 |
+| 0.5 | Media | 音乐浏览、HTTP Range 流式播放；根据目标设备再评估 DLNA/UPnP |
 
 路线图是方向性计划，具体范围以对应版本的需求文档和验收证据为准。
 
