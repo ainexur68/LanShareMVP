@@ -3,6 +3,7 @@ package com.example.lanshare
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 /**
@@ -60,32 +61,51 @@ internal object TransferProtocolValidation {
             reject("files must contain 1-$MAX_PREPARE_FILES items")
         }
 
-        var totalSize = 0L
-        val ids = HashSet<String>(filesValue.length())
         val files = (0 until filesValue.length()).map { index ->
             val fileValue = filesValue.opt(index)
             if (fileValue !is JSONObject) {
                 reject("files[$index] must be an object")
             }
             val id = requireFileId(stringValue(fileValue, "id"))
-            if (!ids.add(id)) {
-                reject("duplicate file id: $id")
-            }
             val name = requiredText(fileValue, "name", MAX_FILE_NAME_LENGTH)
             val size = requiredLong(fileValue, "size")
-            if (size < 0) reject("files[$index].size must be non-negative")
-            if (size > MAX_FILE_SIZE_BYTES) {
-                reject("files[$index].size exceeds $MAX_FILE_SIZE_BYTES bytes")
-            }
-            if (totalSize > MAX_TOTAL_SIZE_BYTES - size) {
-                reject("total file size exceeds $MAX_TOTAL_SIZE_BYTES bytes")
-            }
-            totalSize += size
             val mime = optionalText(fileValue, "mime", MAX_MIME_LENGTH)
             val sha256 = optionalSha256(fileValue, "sha256")
             IncomingFileMeta(id = id, name = name, size = size, mime = mime, sha256 = sha256)
         }
-        return PrepareRequest(sessionId, senderAlias, files)
+        return PrepareRequest(sessionId, senderAlias, validateFiles(files))
+    }
+
+    /** Pure metadata validation used by the JSON parser and JVM tests. */
+    fun validateFiles(files: List<IncomingFileMeta>): List<IncomingFileMeta> {
+        if (files.size !in 1..MAX_PREPARE_FILES) {
+            reject("files must contain 1-$MAX_PREPARE_FILES items")
+        }
+        var totalSize = 0L
+        val ids = HashSet<String>(files.size)
+        files.forEachIndexed { index, file ->
+            requireFileId(file.id)
+            if (!ids.add(file.id)) {
+                reject("duplicate file id: ${file.id}")
+            }
+            if (file.name.isBlank()) reject("files[$index].name must not be blank")
+            validateText(file.name, "files[$index].name", MAX_FILE_NAME_LENGTH)
+            if (file.size < 0) reject("files[$index].size must be non-negative")
+            if (file.size > MAX_FILE_SIZE_BYTES) {
+                reject("files[$index].size exceeds $MAX_FILE_SIZE_BYTES bytes")
+            }
+            if (totalSize > MAX_TOTAL_SIZE_BYTES - file.size) {
+                reject("total file size exceeds $MAX_TOTAL_SIZE_BYTES bytes")
+            }
+            totalSize += file.size
+            file.mime?.takeIf { it.isNotBlank() }?.let {
+                validateText(it, "files[$index].mime", MAX_MIME_LENGTH)
+            }
+            file.sha256?.takeIf { it.isNotBlank() }?.let {
+                validateSha256(it, "files[$index].sha256")
+            }
+        }
+        return files
     }
 
     fun parseComplete(body: JSONObject): CompleteRequest {
@@ -158,6 +178,19 @@ internal object TransferProtocolValidation {
         return part
     }
 
+    /** Create the empty part required by publish(); non-empty uploads create it on first write. */
+    fun ensurePartFile(part: File, declaredSize: Long): File {
+        if (declaredSize < 0) reject("declared file size is invalid")
+        if (declaredSize == 0L) {
+            if (part.exists()) {
+                if (!part.isFile) throw IOException("empty transfer part is not a regular file")
+            } else if (!part.createNewFile() && !part.isFile) {
+                throw IOException("cannot create empty transfer part")
+            }
+        }
+        return part
+    }
+
     private fun requireIdentifier(value: String?, field: String): String {
         val candidate = value ?: reject("missing $field")
         if (candidate.length > MAX_SESSION_ID_LENGTH && field == "sessionId") {
@@ -210,6 +243,11 @@ internal object TransferProtocolValidation {
         if (!body.has(field) || body.isNull(field)) return null
         val value = stringValue(body, field)
         if (value.isBlank()) return null
+        validateSha256(value, field)
+        return value
+    }
+
+    private fun validateSha256(value: String, field: String): String {
         if (!sha256Pattern.matches(value)) reject("$field must be a 64-character SHA-256 hex string")
         return value
     }

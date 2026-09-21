@@ -255,7 +255,9 @@ private class ReceiveSession(
         .apply { mkdirs() }
 
     val items = files.associate { meta ->
-        meta.id to ReceiveItem(meta, TransferProtocolValidation.partFile(tempDir, meta.id))
+        val part = TransferProtocolValidation.partFile(tempDir, meta.id)
+        TransferProtocolValidation.ensurePartFile(part, meta.size)
+        meta.id to ReceiveItem(meta, part)
     }
 
     fun describe(): JSONObject {
@@ -493,7 +495,7 @@ class TransferClient(private val context: Context) {
 
 private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
-private data class HttpRequest(
+internal data class HttpRequest(
     val method: String,
     val path: String,
     val query: Map<String, String>,
@@ -531,15 +533,17 @@ private data class HttpRequest(
             } else {
                 0L
             }
-            val body = if (length == 0L && hasContentLength) {
+            val method = first.getOrElse(0) { "" }
+            val shouldBufferBody = !(method == "PUT" && path == "/v1/upload")
+            val body = if (shouldBufferBody && length == 0L && hasContentLength) {
                 ByteArray(0)
-            } else if (length > 0 && length <= TransferProtocolValidation.MAX_METADATA_BODY_BYTES) {
+            } else if (shouldBufferBody && length > 0 && length <= TransferProtocolValidation.MAX_METADATA_BODY_BYTES) {
                 ByteArray(length.toInt()).also { buf ->
                 var off = 0
                 while (off < buf.size) { val n = input.read(buf, off, buf.size - off); if (n < 0) throw EOFException(); off += n }
                 }
             } else null
-            return HttpRequest(first[0], path, query, headers, body, length, hasContentLength)
+            return HttpRequest(method, path, query, headers, body, length, hasContentLength)
         }
     }
 }

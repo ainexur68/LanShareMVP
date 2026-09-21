@@ -1,34 +1,29 @@
 package com.example.lanshare
 
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Test
 import org.junit.Assert.assertThrows
+import org.junit.Test
 import java.io.File
 import java.nio.file.Files
 
 class TransferProtocolValidationTest {
     @Test
     fun acceptsNormalClientPrepareMetadata() {
-        val request = TransferProtocolValidation.parsePrepare(
-            prepareBody(
+        val files = TransferProtocolValidation.validateFiles(
+            listOf(
                 file(
                     id = "f0-550e8400-e29b-41d4-a716-446655440000",
                     name = "photo.jpg",
                     size = 1_024L,
                     mime = "image/jpeg"
                 )
-            ),
-            defaultSenderAlias = "Pixel"
+            )
         )
 
-        assertEquals("session-123", request.sessionId)
-        assertEquals("Pixel", request.senderAlias)
-        assertEquals(1, request.files.size)
-        assertEquals(1_024L, request.files.single().size)
+        assertEquals(1, files.size)
+        assertEquals(1_024L, files.single().size)
     }
 
     @Test
@@ -50,31 +45,25 @@ class TransferProtocolValidationTest {
     fun rejectsDuplicateIdsAndMetadataBounds() {
         val duplicate = file("same-id", "one.txt", 1L, "text/plain")
         assertThrows(TransferProtocolValidation.ProtocolValidationException::class.java) {
-            TransferProtocolValidation.parsePrepare(prepareBody(duplicate, duplicate), "Phone")
+            TransferProtocolValidation.validateFiles(listOf(duplicate, duplicate))
         }
 
         assertThrows(TransferProtocolValidation.ProtocolValidationException::class.java) {
-            TransferProtocolValidation.parsePrepare(
-                prepareBody(file("file-1", "one.txt", -1L, "text/plain")),
-                "Phone"
+            TransferProtocolValidation.validateFiles(listOf(file("file-1", "one.txt", -1L, "text/plain")))
+        }
+        assertThrows(TransferProtocolValidation.ProtocolValidationException::class.java) {
+            TransferProtocolValidation.validateFiles(
+                listOf(file("file-1", "one.txt", TransferProtocolValidation.MAX_FILE_SIZE_BYTES + 1L, "text/plain"))
             )
         }
         assertThrows(TransferProtocolValidation.ProtocolValidationException::class.java) {
-            TransferProtocolValidation.parsePrepare(
-                prepareBody(file("file-1", "one.txt", TransferProtocolValidation.MAX_FILE_SIZE_BYTES + 1L, "text/plain")),
-                "Phone"
+            TransferProtocolValidation.validateFiles(
+                listOf(file("file-1", "x".repeat(TransferProtocolValidation.MAX_FILE_NAME_LENGTH + 1), 1L, "text/plain"))
             )
         }
         assertThrows(TransferProtocolValidation.ProtocolValidationException::class.java) {
-            TransferProtocolValidation.parsePrepare(
-                prepareBody(file("file-1", "x".repeat(TransferProtocolValidation.MAX_FILE_NAME_LENGTH + 1), 1L, "text/plain")),
-                "Phone"
-            )
-        }
-        assertThrows(TransferProtocolValidation.ProtocolValidationException::class.java) {
-            TransferProtocolValidation.parsePrepare(
-                prepareBody(file("file-1", "one.txt", 1L, "x".repeat(TransferProtocolValidation.MAX_MIME_LENGTH + 1))),
-                "Phone"
+            TransferProtocolValidation.validateFiles(
+                listOf(file("file-1", "one.txt", 1L, "x".repeat(TransferProtocolValidation.MAX_MIME_LENGTH + 1)))
             )
         }
     }
@@ -106,33 +95,14 @@ class TransferProtocolValidationTest {
     }
 
     @Test
-    fun acceptsOptionalPrepareDigestAndValidCompleteDigest() {
-        val body = prepareBody(file("file-1", "one.txt", 1L, "text/plain"))
-        body.put("files", JSONArray().put(file("file-1", "one.txt", 1L, "text/plain").put("sha256", "a".repeat(64))))
-        val parsed = TransferProtocolValidation.parsePrepare(body, "Phone")
-        assertEquals("a".repeat(64), parsed.files.single().sha256)
-
-        val complete = TransferProtocolValidation.parseComplete(
-            JSONObject()
-                .put("sessionId", "session-123")
-                .put("fileId", "file-1")
-                .put("sha256", "b".repeat(64))
+    fun acceptsValidPrepareDigestMetadata() {
+        val files = TransferProtocolValidation.validateFiles(
+            listOf(file("file-1", "one.txt", 1L, "text/plain", sha256 = "a".repeat(64)))
         )
-        assertEquals("b".repeat(64), complete.sha256)
+        assertEquals("a".repeat(64), files.single().sha256)
+        assertTrue(files.single().sha256!!.matches(Regex("[0-9a-f]{64}")))
     }
 
-    private fun prepareBody(vararg files: JSONObject): JSONObject {
-        val array = JSONArray()
-        files.forEach { array.put(it) }
-        return JSONObject()
-            .put("sessionId", "session-123")
-            .put("senderAlias", "Phone")
-            .put("files", array)
-    }
-
-    private fun file(id: String, name: String, size: Long, mime: String): JSONObject = JSONObject()
-        .put("id", id)
-        .put("name", name)
-        .put("size", size)
-        .put("mime", mime)
+    private fun file(id: String, name: String, size: Long, mime: String, sha256: String? = null) =
+        IncomingFileMeta(id = id, name = name, size = size, mime = mime, sha256 = sha256)
 }
