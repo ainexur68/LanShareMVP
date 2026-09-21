@@ -74,9 +74,10 @@ internal fun ConnectionPane(
     }
 
     val payload = remember(endpoint, localHost) {
-        if (localHost != null && endpoint.token.isNotBlank()) {
+        val host = localHost
+        if (host != null && endpoint.token.isNotBlank()) {
             PairingPayload(
-                host = localHost,
+                host = host,
                 port = endpoint.port,
                 token = endpoint.token,
                 fingerprint = DeviceIdentity.fingerprint(context),
