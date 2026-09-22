@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,18 +31,15 @@ fun LanShareApp(
     LanShareTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = AppBackground) {
             var page by rememberSaveable { mutableStateOf(CompactPage.SHARE) }
-            var showFiles by remember { mutableStateOf(false) }
             var showTransfer by remember { mutableStateOf(false) }
             val transfer = AppState.transfer.value
             val transferVisible = transfer.stage != TransferStage.IDLE
 
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+            BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
                 val expanded = maxWidth >= 720.dp
-                val contentPadding = if (expanded) 24.dp else 18.dp
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(contentPadding)
                         .padding(bottom = if (transferVisible) 82.dp else 0.dp)
                 ) {
                     if (expanded) {
@@ -54,13 +52,14 @@ fun LanShareApp(
                                 showConnectAction = false,
                                 onOpenConnect = {},
                                 onPickFiles = onPickFiles,
-                                onShowFiles = { showFiles = true }
+                                expanded = true
                             )
                             ConnectionPane(
                                 modifier = Modifier.weight(1f),
                                 showBack = false,
                                 onBack = {},
-                                onPaired = ::selectPeer
+                                onPaired = ::selectPeer,
+                                expanded = true
                             )
                         }
                     } else if (page == CompactPage.SHARE) {
@@ -69,7 +68,7 @@ fun LanShareApp(
                             showConnectAction = true,
                             onOpenConnect = { page = CompactPage.CONNECT },
                             onPickFiles = onPickFiles,
-                            onShowFiles = { showFiles = true }
+                            expanded = false
                         )
                     } else {
                         ConnectionPane(
@@ -79,7 +78,8 @@ fun LanShareApp(
                             onPaired = { peer ->
                                 selectPeer(peer)
                                 page = CompactPage.SHARE
-                            }
+                            },
+                            expanded = false
                         )
                     }
                 }
@@ -96,7 +96,6 @@ fun LanShareApp(
             }
 
             IncomingDialog()
-            if (showFiles) FileListDialog(onDismiss = { showFiles = false })
             if (showTransfer) {
                 TransferDetailsDialog(
                     state = transfer,

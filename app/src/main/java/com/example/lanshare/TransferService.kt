@@ -1,10 +1,22 @@
 package com.example.lanshare
 
 import android.app.*
+import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import java.io.IOException
+
+internal const val ACTION_REFRESH_DISCOVERY = "com.example.lanshare.action.REFRESH_DISCOVERY"
+
+internal fun requestDiscoveryRefresh(context: Context) {
+    AppState.refreshPeers()
+    ContextCompat.startForegroundService(
+        context,
+        Intent(context, TransferService::class.java).setAction(ACTION_REFRESH_DISCOVERY)
+    )
+}
 
 class TransferService : Service() {
     private var server: TransferServer? = null
@@ -34,6 +46,11 @@ class TransferService : Service() {
         server = activeServer
         AppState.localEndpoint.value = LocalEndpoint(activePort, token)
         discovery = DiscoveryManager(this, activePort, token).also { it.start() }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // The refresh request is consumed by DiscoveryManager through AppState's counter.
+        return START_STICKY
     }
 
     override fun onDestroy() {
