@@ -1,0 +1,25 @@
+LanShare two-device SHA-256 evidence
+
+The three deterministic device-local fixtures were selected through Android's
+OpenMultipleDocuments picker as content:// URIs. Their names/extensions were
+photo.jpg, document.pdf, and video.mp4.
+
+Phone PHY110 -> tablet TB321FU
+Sender:
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/photo.jpg
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/document.pdf
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/video.mp4
+Receiver:
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/photo.jpg
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/document.pdf
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/video.mp4
+
+Tablet TB321FU -> phone PHY110
+Sender:
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/photo.jpg
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/document.pdf
+dffbae6aa6af00654fbd468481cd7e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/video.mp4
+Receiver:
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/photo.jpg
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/document.pdf
+dffbae6aa6af00654fbd468481cd7e1e1e9e2ff869c8042d804fab5a800ce4b1  /sdcard/Download/LanShare/video.mp4

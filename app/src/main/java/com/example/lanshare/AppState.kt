@@ -2,6 +2,7 @@ package com.example.lanshare
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import java.util.concurrent.atomic.AtomicInteger
 
 object AppState {
     val peers = mutableStateListOf<Peer>()
@@ -10,6 +11,7 @@ object AppState {
     val sharedFiles = mutableStateListOf<SharedFile>()
     val localEndpoint = mutableStateOf(LocalEndpoint())
     val selectedPeerFingerprint = mutableStateOf<String?>(null)
+    private val discoveryRefreshRequests = AtomicInteger(0)
 
     @Synchronized
     fun upsertPeer(peer: Peer) {
@@ -24,6 +26,14 @@ object AppState {
     }
 
     fun selectedPeer(): Peer? = peers.firstOrNull { it.fingerprint == selectedPeerFingerprint.value }
+
+    fun refreshPeers() {
+        peers.clear()
+        selectedPeerFingerprint.value = null
+        discoveryRefreshRequests.incrementAndGet()
+    }
+
+    internal fun discoveryRefreshVersion(): Int = discoveryRefreshRequests.get()
 }
 
 data class IncomingOffer(

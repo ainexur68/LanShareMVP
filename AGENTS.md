@@ -1,4 +1,4 @@
-# AGENTS.md — LanShare Engineering Contract
+# AGENTS.md — LocalShare Engineering Contract
 
 ## Mission
 

@@ -10,17 +10,19 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
 import com.example.lanshare.ui.LanShareApp
 
 class MainActivity : ComponentActivity() {
     private val notifyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val pickFiles = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        acceptUris(uris)
+        acceptUris(uris, replace = false)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         ContextCompat.startForegroundService(this, Intent(this, TransferService::class.java))
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -71,17 +73,20 @@ class MainActivity : ComponentActivity() {
             }
             else -> emptyList()
         }
-        acceptUris(uris)
+        acceptUris(uris, replace = true)
     }
 
-    private fun acceptUris(uris: List<Uri>) {
+    private fun acceptUris(uris: List<Uri>, replace: Boolean) {
         if (uris.isEmpty()) return
-        AppState.sharedFiles.clear()
-        uris.forEach { uri ->
+        if (replace) AppState.sharedFiles.clear()
+        val additions = uris.mapNotNull { uri ->
             runCatching {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            AppState.sharedFiles.add(FileUtil.meta(contentResolver, uri))
+            runCatching { FileUtil.meta(contentResolver, uri) }.getOrNull()
         }
+        val merged = appendUniqueSharedFiles(AppState.sharedFiles.toList(), additions)
+        AppState.sharedFiles.clear()
+        AppState.sharedFiles.addAll(merged)
     }
 }

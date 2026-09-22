@@ -4,31 +4,31 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Devices
-import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,11 +41,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Image
 import androidx.core.content.ContextCompat
@@ -62,7 +63,8 @@ internal fun ConnectionPane(
     modifier: Modifier,
     showBack: Boolean,
     onBack: () -> Unit,
-    onPaired: (Peer) -> Unit
+    onPaired: (Peer) -> Unit,
+    expanded: Boolean = false
 ) {
     val context = LocalContext.current
     val endpoint = AppState.localEndpoint.value
@@ -85,9 +87,10 @@ internal fun ConnectionPane(
             )
         } else null
     }
-    var scanning by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(initialScannerEnabled(cameraPermissionGranted = false)) }
     var scanError by remember { mutableStateOf("") }
     var showManual by remember { mutableStateOf(false) }
+    var showHelp by remember { mutableStateOf(false) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         scanning = granted
         if (!granted) scanError = "需要相机权限才能扫码连接"
@@ -102,17 +105,30 @@ internal fun ConnectionPane(
         }
     }
 
-    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(28.dp)) {
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.surface) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val qrSize = if (maxHeight < 660.dp) 138.dp else 176.dp
+            val horizontalPadding = if (expanded) 24.dp else 20.dp
+            val requestedCardSize = connectionCardSizeDp(expanded).dp
+            val maxCardWidth = (maxWidth - horizontalPadding * 2f).coerceAtLeast(0.dp)
+            val maxCardHeight = ((maxHeight - 196.dp).coerceAtLeast(0.dp) / 2f)
+            val cardSize = minOf(requestedCardSize, maxCardWidth, maxCardHeight)
+            val qrSize = (cardSize * 0.54f).coerceAtMost(168.dp)
+            val deviceLabel = if (endpoint.token.isBlank()) {
+                DeviceIdentity.alias(context)
+            } else {
+                "${DeviceIdentity.alias(context)} · ${endpoint.token}"
+            }
+
             Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = horizontalPadding, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (showBack) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.Rounded.ArrowBack, contentDescription = "返回")
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回", tint = Ink)
                         }
                     }
                     Text(
@@ -121,85 +137,76 @@ internal fun ConnectionPane(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(start = if (showBack) 2.dp else 0.dp)
                     )
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { showHelp = true }) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.HelpOutline,
+                            contentDescription = "连接帮助",
+                            tint = Muted,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
 
-                if (scanning) {
-                    QrScanner(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        onValue = { raw ->
-                            runCatching { PairingPayload.parse(raw) }
-                                .onSuccess {
-                                    scanning = false
-                                    onPaired(it.toPeer())
-                                }
-                                .onFailure {
-                                    scanError = it.message ?: "无法识别二维码"
-                                    scanning = false
-                                }
-                        },
-                        onError = { scanError = it }
-                    )
-                    OutlinedButton(onClick = { scanning = false }, modifier = Modifier.fillMaxWidth()) {
-                        Text("取消扫码")
-                    }
-                } else {
-                    Button(
-                        onClick = ::beginScan,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        shape = RoundedCornerShape(18.dp)
-                    ) {
-                        Icon(Icons.Rounded.QrCodeScanner, contentDescription = null)
-                        Text("扫描对方二维码", modifier = Modifier.padding(start = 8.dp))
-                    }
+                Spacer(Modifier.height(if (expanded) 12.dp else 28.dp))
 
-                    if (scanError.isNotBlank()) {
-                        Text(scanError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        Text("让对方扫描", style = MaterialTheme.typography.labelLarge, color = Muted)
-                        if (payload != null) {
-                            val bitmap = remember(payload) { QrCodeGenerator.create(payload.encode(), 512) }
-                            Surface(color = androidx.compose.ui.graphics.Color.White, shape = RoundedCornerShape(20.dp)) {
-                                Image(
-                                    bitmap = bitmap.asImageBitmap(),
-                                    contentDescription = "本机连接二维码",
-                                    modifier = Modifier.size(qrSize).padding(8.dp)
-                                )
-                            }
-                            Text(
-                                DeviceIdentity.alias(context),
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(modifier = Modifier.size(cardSize)) {
+                        if (scanning) {
+                            QrScanner(
+                                modifier = Modifier.fillMaxSize(),
+                                onValue = { raw ->
+                                    runCatching { PairingPayload.parse(raw) }
+                                        .onSuccess {
+                                            scanning = false
+                                            onPaired(it.toPeer())
+                                        }
+                                        .onFailure {
+                                            scanError = it.message ?: "无法识别二维码"
+                                            scanning = false
+                                        }
+                                },
+                                onError = { scanError = it },
+                                onToggle = { scanning = false }
                             )
-                            Text("连接码 ${endpoint.token}", color = Muted, style = MaterialTheme.typography.bodySmall)
                         } else {
-                            Surface(color = AppBackground, shape = RoundedCornerShape(20.dp)) {
-                                Text(
-                                    "正在准备本机连接信息…\n请确认已连接 Wi-Fi 或有线网络",
-                                    modifier = Modifier.size(qrSize).padding(20.dp),
-                                    textAlign = TextAlign.Center,
-                                    color = Muted
-                                )
-                            }
+                            ScannerPlaceholder(
+                                modifier = Modifier.fillMaxSize(),
+                                onClick = ::beginScan,
+                                error = scanError
+                            )
                         }
                     }
 
-                    NearbyPeers(
-                        peers = AppState.peers.take(2),
-                        onSelect = onPaired
-                    )
+                    Spacer(Modifier.height(if (expanded) 10.dp else 18.dp))
+                    ConnectionDivider()
+                    Spacer(Modifier.height(if (expanded) 10.dp else 18.dp))
 
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { showManual = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Text("无法扫码？手动连接", modifier = Modifier.padding(start = 7.dp))
-                    }
+                    QrCodeCard(
+                        modifier = Modifier.size(cardSize),
+                        cardSize = cardSize,
+                        payload = payload,
+                        qrSize = qrSize,
+                        deviceLabel = deviceLabel
+                    )
+                }
+
+                TextButton(
+                    onClick = { showManual = true },
+                    modifier = Modifier.padding(top = if (expanded) 8.dp else 12.dp)
+                ) {
+                    Text("手动连接", style = MaterialTheme.typography.titleMedium)
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = null,
+                        modifier = Modifier.padding(start = 2.dp).size(24.dp)
+                    )
                 }
             }
         }
@@ -214,21 +221,82 @@ internal fun ConnectionPane(
             onDismiss = { showManual = false }
         )
     }
+    if (showHelp) {
+        DetailsDialog(title = "如何连接", onDismiss = { showHelp = false }) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("扫描对方设备上的 LanShare 二维码即可建立局域网连接。")
+                Text("也可以让对方扫描本机二维码，或使用底部的手动连接。", color = Muted)
+            }
+        }
+    }
 }
 
 @Composable
-private fun NearbyPeers(peers: List<Peer>, onSelect: (Peer) -> Unit) {
-    if (peers.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("附近设备", style = MaterialTheme.typography.labelLarge, color = Muted)
-        peers.forEach { peer ->
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onSelect(peer) }.padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Rounded.Devices, contentDescription = null, tint = LanBlue)
-                Text(peer.alias, modifier = Modifier.padding(start = 10.dp).weight(1f), maxLines = 1)
-                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Muted)
+private fun ConnectionDivider() {
+    Row(
+        modifier = Modifier.width(180.dp).height(30.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = Divider)
+        Text(
+            "或",
+            modifier = Modifier.padding(horizontal = 12.dp),
+            color = Muted,
+            style = MaterialTheme.typography.titleMedium
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = Divider)
+    }
+}
+
+@Composable
+private fun QrCodeCard(
+    modifier: Modifier,
+    cardSize: Dp,
+    payload: PairingPayload?,
+    qrSize: Dp,
+    deviceLabel: String
+) {
+    Surface(
+        modifier = modifier,
+        color = Color.White,
+        shape = RoundedCornerShape(26.dp),
+        border = BorderStroke(1.dp, Divider),
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (payload != null) {
+                val bitmap = remember(payload) { QrCodeGenerator.create(payload.encode(), 512) }
+                val qrFrameSize = (qrSize + 12.dp).coerceAtMost((cardSize - 32.dp).coerceAtLeast(0.dp))
+                Surface(
+                    modifier = Modifier.size(qrFrameSize),
+                    color = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, Divider)
+                ) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "本机连接二维码",
+                        modifier = Modifier.fillMaxSize().padding(6.dp)
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.PhoneAndroid, contentDescription = null, tint = Ink, modifier = Modifier.size(22.dp))
+                    Text(
+                        deviceLabel,
+                        modifier = Modifier.padding(start = 8.dp),
+                        color = Ink,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            } else {
+                Icon(Icons.Rounded.Devices, contentDescription = "本机连接信息", tint = PaleBlue, modifier = Modifier.size(46.dp))
             }
         }
     }
@@ -272,7 +340,7 @@ private fun ManualConnectDialog(onConnected: (Peer) -> Unit, onDismiss: () -> Un
                     }.onSuccess(onConnected).onFailure { error = it.message ?: "连接信息无效" }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(18.dp)
             ) { Text("连接设备") }
         }
     }

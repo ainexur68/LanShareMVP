@@ -15,8 +15,8 @@
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
-        android:label="LanShare"
-        android:theme="@style/Theme.LanShare"
+        android:label="LocalShare"
+        android:theme="@style/Theme.LocalShare"
         android:usesCleartextTraffic="true">
 
         <activity

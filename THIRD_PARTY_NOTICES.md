@@ -1,7 +1,7 @@
 # Third-party notices
 
 The Apache-2.0 license in [`LICENSE`](LICENSE) applies only to original
-LanShare source code and documentation. Dependencies brought in by Gradle
+LocalShare source code and documentation. Dependencies brought in by Gradle
 remain under their own licenses and notices.
 
 The current direct dependencies are declared in

@@ -1,0 +1,15 @@
+LanShare design QA device matrix
+
+PHY110
+- Android 15
+- model: PHY110
+- physical: 1440x3168
+- density: physical 640 dpi, override 560 dpi
+- adb: 192.168.31.203:34379 (currently rejected; mDNS not discovered during this run)
+
+TB321FU
+- Android 16
+- model: TB321FU
+- physical: 1600x2560
+- density: physical 400 dpi
+- adb: 192.168.31.166:41163 (connected during this run)

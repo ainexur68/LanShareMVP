@@ -13,7 +13,7 @@
 
 ## B. 分享入口
 
-- [ ] 文件管理器长按单文件 -> 分享 -> LanShare，文件名/大小正确。
+- [ ] 文件管理器长按单文件 -> 分享 -> LocalShare，文件名/大小正确。
 - [ ] 多文件 ACTION_SEND_MULTIPLE 正确列出。
 - [ ] App 内“选择文件”可一次选择多个文件并列入待发送列表。
 - [ ] 不依赖 filesystem path；来自相册/Downloads provider 的 content URI 可读。

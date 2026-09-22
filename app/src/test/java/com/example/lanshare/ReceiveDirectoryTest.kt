@@ -6,7 +6,7 @@ import org.junit.Test
 
 class ReceiveDirectoryTest {
     @Test
-    fun viewSpecTargetsTheLanShareDirectory() {
+    fun viewSpecTargetsTheLegacyReceiveDirectory() {
         val spec = ReceiveDirectory.viewSpec()
 
         assertEquals(Intent.ACTION_VIEW, spec.action)
@@ -15,7 +15,7 @@ class ReceiveDirectoryTest {
     }
 
     @Test
-    fun treeSpecStartsAtTheLanShareDirectory() {
+    fun treeSpecStartsAtTheLegacyReceiveDirectory() {
         val spec = ReceiveDirectory.treeSpec()
 
         assertEquals(Intent.ACTION_OPEN_DOCUMENT_TREE, spec.action)

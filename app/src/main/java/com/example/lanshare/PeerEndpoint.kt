@@ -1,6 +1,6 @@
 package com.example.lanshare
 
-/** User-entered or discovered address of a LanShare receiver. */
+/** User-entered or discovered address of a LocalShare receiver. */
 data class PeerEndpoint(val host: String, val port: Int) {
     companion object {
         fun parse(raw: String): PeerEndpoint {

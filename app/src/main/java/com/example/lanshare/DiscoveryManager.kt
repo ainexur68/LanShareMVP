@@ -28,9 +28,9 @@ class DiscoveryManager(
     fun start() {
         if (!running.compareAndSet(false, true)) return
         lock = (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager)
-            .createMulticastLock("lanshare-discovery").apply { setReferenceCounted(false); acquire() }
-        Thread(::listenLoop, "lanshare-discovery-listen").start()
-        Thread(::announceLoop, "lanshare-discovery-announce").start()
+            .createMulticastLock("localshare-discovery").apply { setReferenceCounted(false); acquire() }
+        Thread(::listenLoop, "localshare-discovery-listen").start()
+        Thread(::announceLoop, "localshare-discovery-announce").start()
     }
 
     fun stop() {
@@ -56,10 +56,19 @@ class DiscoveryManager(
 
     private fun announceLoop() {
         MulticastSocket().use { socket ->
+            var nextAnnouncementAt = 0L
+            var announcedRefreshVersion = AppState.discoveryRefreshVersion()
             while (running.get()) {
-                val bytes = payload(true)
-                runCatching { socket.send(DatagramPacket(bytes, bytes.size, group, discoveryPort)) }
-                Thread.sleep(3_000)
+                val now = System.currentTimeMillis()
+                val refreshVersion = AppState.discoveryRefreshVersion()
+                val refreshRequested = refreshVersion != announcedRefreshVersion
+                if (refreshRequested || now >= nextAnnouncementAt) {
+                    val bytes = payload(true)
+                    runCatching { socket.send(DatagramPacket(bytes, bytes.size, group, discoveryPort)) }
+                    nextAnnouncementAt = now + 3_000
+                    announcedRefreshVersion = refreshVersion
+                }
+                Thread.sleep(250)
             }
         }
     }
