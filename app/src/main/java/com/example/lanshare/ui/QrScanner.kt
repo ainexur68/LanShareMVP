@@ -77,38 +77,44 @@ internal fun QrScanner(
 
     DisposableEffect(lifecycleOwner) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        val bindingGate = QrScannerBindingGate()
         val listener = Runnable {
             runCatching {
                 val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
-                val analysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                analysis.setAnalyzer(executor) { imageProxy ->
-                    val mediaImage = imageProxy.image
-                    if (mediaImage == null || delivered.get()) {
-                        imageProxy.close()
-                        return@setAnalyzer
-                    }
-                    scanner.process(InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees))
-                        .addOnSuccessListener { barcodes ->
-                            val raw = barcodes.firstNotNullOfOrNull { it.rawValue }
-                            if (raw != null && delivered.compareAndSet(false, true)) onValue(raw)
+                bindingGate.withActive {
+                    val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
+                    val analysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                    analysis.setAnalyzer(executor) { imageProxy ->
+                        val mediaImage = imageProxy.image
+                        if (mediaImage == null || delivered.get()) {
+                            imageProxy.close()
+                            return@setAnalyzer
                         }
-                        .addOnFailureListener { onError(it.message ?: "无法识别二维码") }
-                        .addOnCompleteListener { imageProxy.close() }
+                        scanner.process(InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees))
+                            .addOnSuccessListener { barcodes ->
+                                val raw = barcodes.firstNotNullOfOrNull { it.rawValue }
+                                if (raw != null && delivered.compareAndSet(false, true)) onValue(raw)
+                            }
+                            .addOnFailureListener { onError(it.message ?: "无法识别二维码") }
+                            .addOnCompleteListener { imageProxy.close() }
+                    }
+                    cameraProvider.unbindAll()
+                    camera = cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        analysis
+                    )
                 }
-                cameraProvider.unbindAll()
-                camera = cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
-                    preview,
-                    analysis
-                )
-            }.onFailure { onError(it.message ?: "无法启动相机") }
+            }.onFailure {
+                if (bindingGate.isActive()) onError(it.message ?: "无法启动相机")
+            }
         }
         cameraProviderFuture.addListener(listener, ContextCompat.getMainExecutor(context))
         onDispose {
+            bindingGate.dispose()
             camera?.cameraControl?.enableTorch(false)
             if (cameraProviderFuture.isDone) runCatching { cameraProviderFuture.get().unbindAll() }
             scanner.close()
