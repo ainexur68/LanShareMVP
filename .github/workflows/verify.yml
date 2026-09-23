@@ -123,10 +123,9 @@ jobs:
       - name: Verify package and enforce size and ABI gate
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/release/app-release.apk"
-          test -f "$APK"
           mapfile -t APK_FILES < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
           test "${#APK_FILES[@]}" -eq 1
+          APK="${APK_FILES[0]}"
           APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | sort -V | tail -n 1)"
           test -n "$APKANALYZER"
           test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
