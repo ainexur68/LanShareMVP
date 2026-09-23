@@ -70,7 +70,7 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Test, lint and build signed release APK
+      - name: Test, lint and build signed ABI release APKs
         run: |
           ./gradlew --no-daemon --stacktrace \
             :app:testDebugUnitTest \
@@ -78,36 +78,45 @@ jobs:
             :app:lintRelease \
             :app:assembleRelease
 
-      - name: Verify signed production Release APK
+      - name: Verify all signed production Release APKs
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/release/app-release.apk"
-          test -f "$APK"
+          ABIS=(arm64-v8a armeabi-v7a x86 x86_64)
           APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | sort -V | tail -n 1)"
           test -n "$APKANALYZER"
-          test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
-          test "$("$APKANALYZER" manifest debuggable "$APK")" = "false"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          for ABI in "${ABIS[@]}"; do
+            APK="app/build/outputs/apk/release/app-${ABI}-release.apk"
+            test -f "$APK"
+            test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
+            test "$("$APKANALYZER" manifest debuggable "$APK")" = "false"
+            "$APKSIGNER" verify --verbose --print-certs "$APK"
+          done
 
       - name: Prepare release artifacts
         run: |
           set -euo pipefail
+          ABIS=(arm64-v8a armeabi-v7a x86 x86_64)
           mkdir -p release-artifacts
-          cp app/build/outputs/apk/release/app-release.apk \
-            "release-artifacts/LanShare-${GITHUB_REF_NAME}.apk"
+          for ABI in "${ABIS[@]}"; do
+            cp "app/build/outputs/apk/release/app-${ABI}-release.apk" \
+              "release-artifacts/LanShare-${GITHUB_REF_NAME}-${ABI}.apk"
+          done
           (
             cd release-artifacts
-            sha256sum "LanShare-${GITHUB_REF_NAME}.apk" > SHA256SUMS.txt
+            sha256sum ./*.apk > SHA256SUMS.txt
           )
 
       - name: Report and enforce Release APK size
-        run: >-
-          python3 scripts/report_apk_size.py
-          "release-artifacts/LanShare-${GITHUB_REF_NAME}.apk"
-          --max-mib 15
-          --report-file app/build/reports/apk-size-release.md
+        run: |
+          set -euo pipefail
+          mapfile -t APK_FILES < <(find release-artifacts -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APK_FILES[@]}" -eq 4
+          python3 scripts/report_apk_size.py "${APK_FILES[@]}" \
+            --max-mib 15 \
+            --expect-abis arm64-v8a armeabi-v7a x86 x86_64 \
+            --report-file app/build/reports/apk-size-release.md
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

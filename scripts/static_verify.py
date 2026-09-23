@@ -45,6 +45,8 @@ checks={
  'throttled progress':'TransferProgress()' in code,
  'Release R8 minification enabled':re.search(r'isMinifyEnabled\s*=\s*true', app_gradle) is not None,
  'Release resource shrinking enabled':re.search(r'isShrinkResources\s*=\s*true', app_gradle) is not None,
+ 'ABI split packaging enabled':'isEnable = true' in app_gradle and 'isUniversalApk = false' in app_gradle,
+ 'all four ABI splits configured':all(abi in app_gradle for abi in ('arm64-v8a','armeabi-v7a','x86','x86_64')),
  'extended Material icon catalog removed':'material-icons-extended' not in app_gradle,
  'preview-only tooling not packaged':'ui-tooling-preview' not in app_gradle,
 }

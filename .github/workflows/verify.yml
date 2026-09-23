@@ -72,16 +72,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LanShare-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
       - name: Report and enforce Release APK size
         run: |
           set -euo pipefail
-          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' -print -quit)"
-          test -n "$APK"
-          python3 scripts/report_apk_size.py "$APK" \
+          mapfile -t APK_FILES < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APK_FILES[@]}" -eq 4
+          python3 scripts/report_apk_size.py "${APK_FILES[@]}" \
             --max-mib 15 \
+            --expect-abis arm64-v8a armeabi-v7a x86 x86_64 \
             --report-file app/build/reports/apk-size-release.md
       - name: Upload Release APK size report
         if: always()

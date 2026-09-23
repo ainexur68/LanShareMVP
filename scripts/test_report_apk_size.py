@@ -20,18 +20,21 @@ class ApkSizeReportTest(unittest.TestCase):
             archive.writestr("META-INF/CERT.RSA", b"signature")
 
     def test_report_breaks_down_payload_and_detects_abi(self):
-        report, size_bytes, limit_bytes = build_report(self.apk, max_mib=15)
+        report, size_bytes, limit_bytes, abis = build_report(self.apk, max_mib=15)
 
         self.assertLessEqual(size_bytes, limit_bytes)
+        self.assertEqual(abis, {"arm64-v8a"})
         self.assertIn("Native ABIs: arm64-v8a", report)
         self.assertIn("| DEX |", report)
         self.assertIn("| Resources |", report)
         self.assertIn("| Assets |", report)
         self.assertIn("| Native libraries |", report)
+        self.assertIn("| ZIP/signing overhead |", report)
+        self.assertIn("| arm64-v8a |", report)
         self.assertIn("Gate: PASS", report)
 
     def test_report_fails_when_apk_exceeds_limit(self):
-        report, size_bytes, limit_bytes = build_report(self.apk, max_mib=0.0005)
+        report, size_bytes, limit_bytes, _ = build_report(self.apk, max_mib=0.0005)
 
         self.assertGreater(size_bytes, limit_bytes)
         self.assertIn("Gate: FAIL", report)
