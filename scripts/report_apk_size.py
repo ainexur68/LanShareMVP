@@ -106,18 +106,27 @@ def main() -> int:
         nargs="+",
         help="Require one APK per listed native ABI and no universal APK",
     )
+    parser.add_argument(
+        "--expect-abi-set",
+        nargs="+",
+        help="Require exactly one APK containing exactly the listed native ABIs",
+    )
     parser.add_argument("--report-file", type=Path, help="Also write the report to this path")
     args = parser.parse_args()
     if args.max_mib <= 0:
         parser.error("--max-mib must be positive")
+    if args.expect_abis and args.expect_abi_set:
+        parser.error("--expect-abis and --expect-abi-set cannot be used together")
 
     try:
         reports = []
+        apk_abis: list[set[str]] = []
         size_ok = True
         abi_counts: dict[str, int] = {}
         for apk in args.apks:
             report, size_bytes, limit_bytes, abis = build_report(apk, args.max_mib)
             reports.append(report)
+            apk_abis.append(abis)
             size_ok = size_ok and size_bytes <= limit_bytes
             if args.expect_abis:
                 if len(abis) != 1:
@@ -154,6 +163,20 @@ def main() -> int:
             overall.append(f"- Missing ABI APKs: {', '.join(sorted(missing))}")
         if unexpected:
             overall.append(f"- Unexpected ABI APKs: {', '.join(sorted(unexpected))}")
+    if args.expect_abi_set:
+        expected = set(args.expect_abi_set)
+        found = apk_abis[0] if len(apk_abis) == 1 else set()
+        abi_set_ok = len(apk_abis) == 1 and found == expected
+        coverage_ok = coverage_ok and abi_set_ok
+        overall.extend(
+            [
+                f"**Single APK ABI set: {'PASS' if abi_set_ok else 'FAIL'}**",
+                f"- Expected in one APK: {', '.join(sorted(expected))}",
+                f"- Found in one APK: {', '.join(sorted(found)) if len(apk_abis) == 1 and found else 'none'}",
+            ]
+        )
+        if len(apk_abis) != 1:
+            overall.append(f"- Expected exactly one APK; found {len(apk_abis)}")
     overall.append(f"\n**Overall gate: {'PASS' if size_ok and coverage_ok else 'FAIL'}**\n")
     combined_report = "\n".join(overall)
     print(combined_report, end="")

@@ -93,6 +93,49 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  arm-release-candidate:
+    name: Combined ARM release APK
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+      - name: Build unsigned combined ARM Release APK
+        run: >-
+          ./gradlew --no-daemon --stacktrace
+          -PlanShareArmReleasePackage=true
+          :app:assembleRelease
+      - name: Verify package and enforce size and ABI gate
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -f "$APK"
+          mapfile -t APK_FILES < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APK_FILES[@]}" -eq 1
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -n "$APKANALYZER"
+          test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
+          test "$("$APKANALYZER" manifest debuggable "$APK")" = "false"
+          python3 scripts/report_apk_size.py "$APK" \
+            --max-mib 15 \
+            --expect-abi-set arm64-v8a armeabi-v7a \
+            --report-file app/build/reports/apk-size-arm-release-candidate.md
+
   docker:
     name: Docker verification
     needs: static
