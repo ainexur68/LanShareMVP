@@ -1,0 +1,135 @@
+name: Publish v0.2.0-beta.1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/publish-v0.2.0-beta.1.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v0.2.0-beta.1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish public beta
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RELEASE_TAG: v0.2.0-beta.1
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate beta version and release secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          test "$VERSION_NAME" = "0.2.0-beta.1"
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+
+      - name: Restore release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_FILE="$RUNNER_TEMP/lanshare-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+          echo "ANDROID_KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+
+      - name: Build signed combined ARM release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace \
+            -PlanShareArmReleasePackage=true \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:lintRelease \
+            :app:assembleRelease
+
+      - name: Verify signed APK
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -f "$APK"
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
+          test "$("$APKANALYZER" manifest debuggable "$APK")" = "false"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Prepare and gate release artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          cp app/build/outputs/apk/release/app-release.apk "release-artifacts/LanShare-${RELEASE_TAG}.apk"
+          (
+            cd release-artifacts
+            sha256sum "LanShare-${RELEASE_TAG}.apk" > SHA256SUMS.txt
+          )
+          python3 scripts/report_apk_size.py "release-artifacts/LanShare-${RELEASE_TAG}.apk" \
+            --max-mib 15 \
+            --expect-abi-set arm64-v8a armeabi-v7a \
+            --report-file app/build/reports/apk-size-release.md
+
+      - name: Publish GitHub Pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG already exists; nothing to publish."
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## LanShare v0.2.0-beta.1
+
+          首个公开 Beta 版本，用于正式 v0.2.0 前的真实设备兼容性与端到端验证。
+
+          ### 本次重点
+          - 局域网设备发现与二维码配对
+          - 文件发送/接收、取消与断点续传
+          - SHA-256 完整性校验
+          - 优化后的 Compose UI 与横竖屏布局
+          - R8/resource shrinking 与单一 ARM 安装包
+          - Release APK 体积门禁（≤15 MiB）
+
+          ### 公测说明
+          这是 Pre-release。请重点反馈不同 Android 设备、路由器/Wi-Fi 环境下的发现、扫码、大文件传输、后台/锁屏和断点续传问题。
+
+          已知非阻塞项见 Issue #7；Beta → Stable 验收跟踪见 Issue #6。
+          EOF
+          gh release create "$RELEASE_TAG" \
+            release-artifacts/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "LanShare $RELEASE_TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
