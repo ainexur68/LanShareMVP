@@ -1,11 +1,13 @@
 # Releasing LanShare
 
-LanShare releases are created from Git tags. Pushing a tag such as v0.2.0 triggers
-.github/workflows/release.yml, which tests the project, builds one signed ARM APK,
-verifies its application ID, non-debuggable state, and signature, enforces the 15 MiB
-limit and the expected ARM ABI set, creates a SHA-256 checksum, and publishes a
-GitHub Release. The size breakdown is written to the Actions summary and workflow
-artifact; it is not added as a public Release asset.
+LanShare releases are created from Git tags. Pushing a tag such as v0.2.0 or
+v0.2.0-beta.1 triggers .github/workflows/release.yml, which tests the project, builds
+one signed ARM APK, verifies its application ID, non-debuggable state, and signature,
+enforces the 15 MiB limit and the expected ARM ABI set, creates a SHA-256 checksum,
+and publishes a GitHub Release. Tags whose version contains a prerelease suffix
+(for example, -beta.1) are automatically published as GitHub Pre-releases. The size
+breakdown is written to the Actions summary and workflow artifact; it is not added
+as a public Release asset.
 
 The original universal APK measured 24.06 MiB in CI, with native libraries
 accounting for 80.9% of its compressed size. The public Release APK contains both
@@ -57,13 +59,30 @@ from installing future APKs as an update over an existing installation.
 Before tagging, update `versionName` and increment `versionCode` in
 `app/build.gradle.kts`. The tag must exactly match `v<versionName>`.
 
-Example for version 0.2.0:
+For the first public beta:
+
+```text
+versionCode = 2
+versionName = "0.2.0-beta.1"
+tag = v0.2.0-beta.1
+```
+
+For the later stable release, increment `versionCode` again so beta users can
+upgrade normally:
+
+```text
+versionCode = 3
+versionName = "0.2.0"
+tag = v0.2.0
+```
+
+Example beta tag:
 
 ```bash
 git checkout main
 git pull --ff-only
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.0-beta.1
+git push origin v0.2.0-beta.1
 ```
 
 The workflow fails closed if signing secrets are missing, the tag does not match
