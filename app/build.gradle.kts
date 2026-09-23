@@ -8,6 +8,7 @@ val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
 val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
 val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
 val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+val armReleasePackage = providers.gradleProperty("lanShareArmReleasePackage").orNull == "true"
 val hasReleaseSigning = listOf(
     releaseKeystorePath,
     releaseKeystorePassword,
@@ -27,11 +28,17 @@ android {
         versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            if (armReleasePackage) {
+                abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+            }
+        }
     }
 
     splits {
         abi {
-            isEnable = true
+            isEnable = !armReleasePackage
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
             isUniversalApk = false
