@@ -2,7 +2,14 @@
 
 LanShare releases are created from Git tags. Pushing a tag such as `v0.2.0` triggers
 `.github/workflows/release.yml`, which tests the project, builds a signed release APK,
-verifies its signature, creates a SHA-256 checksum, and publishes a GitHub Release.
+checks the APK is non-debuggable and uses `top.nexur.lanshare`, enforces the 15 MiB
+Universal APK limit, creates a SHA-256 checksum, and publishes a GitHub Release.
+The size breakdown is written to the Actions summary and workflow artifact; it is
+not added as a public Release asset.
+
+Pull request verification also builds the optimized, unsigned Release variant and
+enforces the same 15 MiB limit before changes can merge. The tagged Release build
+repeats the size check after signing so the gate applies to the exact published APK.
 
 ## Signing key storage
 

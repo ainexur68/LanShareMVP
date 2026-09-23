@@ -32,6 +32,8 @@ jobs:
           python-version: "3.12"
       - name: Run repository static verification
         run: python3 scripts/static_verify.py
+      - name: Test APK size gate
+        run: python3 -m unittest discover --start-directory scripts --pattern 'test_*.py'
       - name: Check whitespace errors
         run: git diff --check
 
@@ -51,10 +53,20 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
-      - name: Run unit tests, lint and debug assemble
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Run unit tests, lint, and debug/Release builds
+        run: >-
+          ./gradlew --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:lintDebug
+          :app:lintRelease
+          :app:assembleDebug
+          :app:assembleRelease
       - name: Upload debug APK
         if: success()
         uses: actions/upload-artifact@v4
@@ -62,6 +74,22 @@ jobs:
           name: LanShare-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
+      - name: Report and enforce Release APK size
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' -print -quit)"
+          test -n "$APK"
+          python3 scripts/report_apk_size.py "$APK" \
+            --max-mib 15 \
+            --report-file app/build/reports/apk-size-release.md
+      - name: Upload Release APK size report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LanShare-release-apk-size-report
+          path: app/build/reports/apk-size-release.md
+          if-no-files-found: ignore
           retention-days: 7
 
   docker:

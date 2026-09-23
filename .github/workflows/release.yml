@@ -35,6 +35,11 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Validate release secrets
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -67,13 +72,21 @@ jobs:
 
       - name: Test, lint and build signed release APK
         run: |
-          ./gradlew --no-daemon --stacktrace             :app:testDebugUnitTest             :app:lintDebug             :app:assembleRelease
+          ./gradlew --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:lintRelease \
+            :app:assembleRelease
 
-      - name: Verify APK signature
+      - name: Verify signed production Release APK
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
           test -f "$APK"
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -n "$APKANALYZER"
+          test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
+          test "$("$APKANALYZER" manifest debuggable "$APK")" = "false"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
@@ -82,17 +95,27 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-artifacts
-          cp app/build/outputs/apk/release/app-release.apk             "release-artifacts/LanShare-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk \
+            "release-artifacts/LanShare-${GITHUB_REF_NAME}.apk"
           (
             cd release-artifacts
             sha256sum "LanShare-${GITHUB_REF_NAME}.apk" > SHA256SUMS.txt
           )
 
+      - name: Report and enforce Release APK size
+        run: >-
+          python3 scripts/report_apk_size.py
+          "release-artifacts/LanShare-${GITHUB_REF_NAME}.apk"
+          --max-mib 15
+          --report-file app/build/reports/apk-size-release.md
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: LanShare-${{ github.ref_name }}-release
-          path: release-artifacts/*
+          path: |
+            release-artifacts/*
+            app/build/reports/apk-size-release.md
           if-no-files-found: error
           retention-days: 90
 
@@ -100,4 +123,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME"             release-artifacts/*             --verify-tag             --generate-notes             --title "LanShare $GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" \
+            release-artifacts/* \
+            --verify-tag \
+            --generate-notes \
+            --title "LanShare $GITHUB_REF_NAME"

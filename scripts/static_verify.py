@@ -8,7 +8,9 @@ required = [
     'app/src/main/java/com/example/lanshare/PairingPayload.kt',
     'app/src/main/java/com/example/lanshare/ui/ConnectionPane.kt',
     'app/src/main/java/com/example/lanshare/TransferProtocol.kt',
-    'app/src/main/java/com/example/lanshare/ReceiveDirectory.kt'
+    'app/src/main/java/com/example/lanshare/ReceiveDirectory.kt',
+    'app/build.gradle.kts',
+    'scripts/report_apk_size.py'
 ]
 missing=[p for p in required if not (root/p).exists()]
 if missing:
@@ -22,6 +24,7 @@ connection=(root/'app/src/main/java/com/example/lanshare/ui/ConnectionPane.kt').
 pairing=(root/'app/src/main/java/com/example/lanshare/PairingPayload.kt').read_text(encoding='utf-8')
 access_token=(root/'app/src/main/java/com/example/lanshare/AccessToken.kt').read_text(encoding='utf-8')
 directory=(root/'app/src/main/java/com/example/lanshare/ReceiveDirectory.kt').read_text(encoding='utf-8')
+app_gradle=(root/'app/build.gradle.kts').read_text(encoding='utf-8')
 checks={
  'ACTION_SEND':'android.intent.action.SEND' in manifest,
  'ACTION_SEND_MULTIPLE':'android.intent.action.SEND_MULTIPLE' in manifest,
@@ -40,6 +43,10 @@ checks={
  'versioned qr pairing':'lanshare://pair?v=' in pairing and 'PairingPayload.parse' in connection,
  'streaming sender hash':'digest.update(buf, 0, n)' in code and '.put("sha256", sha256)' in code,
  'throttled progress':'TransferProgress()' in code,
+ 'Release R8 minification enabled':re.search(r'isMinifyEnabled\s*=\s*true', app_gradle) is not None,
+ 'Release resource shrinking enabled':re.search(r'isShrinkResources\s*=\s*true', app_gradle) is not None,
+ 'extended Material icon catalog removed':'material-icons-extended' not in app_gradle,
+ 'preview-only tooling not packaged':'ui-tooling-preview' not in app_gradle,
 }
 for k,v in checks.items(): print(('PASS' if v else 'FAIL'), k)
 if not all(checks.values()): sys.exit(2)

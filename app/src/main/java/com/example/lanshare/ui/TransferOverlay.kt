@@ -12,10 +12,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Error
-import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -26,11 +22,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.lanshare.AppState
 import com.example.lanshare.ReceiveDirectory
+import com.example.lanshare.R
 import com.example.lanshare.TransferDirection
 import com.example.lanshare.TransferStage
 import com.example.lanshare.TransferUiState
@@ -38,6 +37,12 @@ import com.example.lanshare.TransferUiState
 @Composable
 internal fun TransferCapsule(state: TransferUiState, modifier: Modifier, onClick: () -> Unit) {
     val progress = if (state.total > 0) (state.sent.toFloat() / state.total).coerceIn(0f, 1f) else 0f
+    val iconPainter = when {
+        state.stage == TransferStage.COMPLETE -> rememberVectorPainter(Icons.Rounded.CheckCircle)
+        state.stage == TransferStage.FAILED -> painterResource(R.drawable.ic_error)
+        state.direction == TransferDirection.SEND -> painterResource(R.drawable.ic_upload)
+        else -> painterResource(R.drawable.ic_download)
+    }
     Surface(
         modifier = modifier.fillMaxWidth().widthIn(max = 560.dp).clickable(onClick = onClick),
         color = Ink,
@@ -50,12 +55,7 @@ internal fun TransferCapsule(state: TransferUiState, modifier: Modifier, onClick
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                when {
-                    state.stage == TransferStage.COMPLETE -> Icons.Rounded.CheckCircle
-                    state.stage == TransferStage.FAILED -> Icons.Rounded.Error
-                    state.direction == TransferDirection.SEND -> Icons.Rounded.Upload
-                    else -> Icons.Rounded.Download
-                },
+                painter = iconPainter,
                 contentDescription = null,
                 tint = if (state.stage == TransferStage.COMPLETE) Color(0xFF71D99A) else Color.White,
                 modifier = Modifier.size(24.dp)
@@ -83,7 +83,7 @@ internal fun TransferCapsule(state: TransferUiState, modifier: Modifier, onClick
                     Text(statusSummary(state), style = MaterialTheme.typography.bodySmall, color = Color(0xFFCBD5E1))
                 }
             }
-            Icon(Icons.Rounded.ChevronRight, contentDescription = "查看传输详情", tint = Color(0xFFCBD5E1))
+            Icon(painter = painterResource(R.drawable.ic_chevron_right), contentDescription = "查看传输详情", tint = Color(0xFFCBD5E1))
         }
     }
 }

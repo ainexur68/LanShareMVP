@@ -20,10 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.HelpOutline
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Devices
-import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -57,6 +54,7 @@ import com.example.lanshare.PairingPayload
 import com.example.lanshare.Peer
 import com.example.lanshare.PeerEndpoint
 import com.example.lanshare.QrCodeGenerator
+import com.example.lanshare.R
 
 @Composable
 internal fun ConnectionPane(
@@ -140,7 +138,7 @@ internal fun ConnectionPane(
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { showHelp = true }) {
                         Icon(
-                            Icons.AutoMirrored.Rounded.HelpOutline,
+                            painter = painterResource(R.drawable.ic_help_outline),
                             contentDescription = "连接帮助",
                             tint = Muted,
                             modifier = Modifier.size(28.dp)
@@ -203,7 +201,7 @@ internal fun ConnectionPane(
                 ) {
                     Text("手动连接", style = MaterialTheme.typography.titleMedium)
                     Icon(
-                        Icons.Rounded.ChevronRight,
+                        painter = painterResource(R.drawable.ic_chevron_right),
                         contentDescription = null,
                         modifier = Modifier.padding(start = 2.dp).size(24.dp)
                     )
@@ -285,7 +283,7 @@ private fun QrCodeCard(
                 }
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.PhoneAndroid, contentDescription = null, tint = Ink, modifier = Modifier.size(22.dp))
+                    Icon(painter = painterResource(R.drawable.ic_phone_android), contentDescription = null, tint = Ink, modifier = Modifier.size(22.dp))
                     Text(
                         deviceLabel,
                         modifier = Modifier.padding(start = 8.dp),
@@ -296,7 +294,7 @@ private fun QrCodeCard(
                     )
                 }
             } else {
-                Icon(Icons.Rounded.Devices, contentDescription = "本机连接信息", tint = PaleBlue, modifier = Modifier.size(46.dp))
+                Icon(painter = painterResource(R.drawable.ic_devices), contentDescription = "本机连接信息", tint = PaleBlue, modifier = Modifier.size(46.dp))
             }
         }
     }
