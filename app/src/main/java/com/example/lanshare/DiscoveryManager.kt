@@ -56,10 +56,19 @@ class DiscoveryManager(
 
     private fun announceLoop() {
         MulticastSocket().use { socket ->
+            var nextAnnouncementAt = 0L
+            var announcedRefreshVersion = AppState.discoveryRefreshVersion()
             while (running.get()) {
-                val bytes = payload(true)
-                runCatching { socket.send(DatagramPacket(bytes, bytes.size, group, discoveryPort)) }
-                Thread.sleep(3_000)
+                val now = System.currentTimeMillis()
+                val refreshVersion = AppState.discoveryRefreshVersion()
+                val refreshRequested = refreshVersion != announcedRefreshVersion
+                if (refreshRequested || now >= nextAnnouncementAt) {
+                    val bytes = payload(true)
+                    runCatching { socket.send(DatagramPacket(bytes, bytes.size, group, discoveryPort)) }
+                    nextAnnouncementAt = now + 3_000
+                    announcedRefreshVersion = refreshVersion
+                }
+                Thread.sleep(250)
             }
         }
     }
