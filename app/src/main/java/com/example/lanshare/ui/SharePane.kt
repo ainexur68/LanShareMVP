@@ -27,13 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.Devices
-import androidx.compose.material.icons.automirrored.rounded.HelpOutline
-import androidx.compose.material.icons.rounded.PhoneAndroid
-import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,11 +46,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.lanshare.AppState
 import com.example.lanshare.Peer
+import com.example.lanshare.R
 import com.example.lanshare.SharedFile
 import com.example.lanshare.TransferClient
 import com.example.lanshare.requestDiscoveryRefresh
@@ -190,11 +186,11 @@ private fun ShareHeader(
         Spacer(Modifier.weight(1f))
         if (showConnectAction) {
             IconButton(onClick = onOpenConnect) {
-                Icon(Icons.Rounded.QrCodeScanner, contentDescription = "扫码连接", tint = LanBlue, modifier = Modifier.size(25.dp))
+                Icon(painter = painterResource(R.drawable.ic_qr_code_scanner), contentDescription = "扫码连接", tint = LanBlue, modifier = Modifier.size(25.dp))
             }
         }
         IconButton(onClick = onShowHelp) {
-            Icon(Icons.AutoMirrored.Rounded.HelpOutline, contentDescription = "分享帮助", tint = Muted, modifier = Modifier.size(28.dp))
+            Icon(painter = painterResource(R.drawable.ic_help_outline), contentDescription = "分享帮助", tint = Muted, modifier = Modifier.size(28.dp))
         }
     }
 }
@@ -227,17 +223,17 @@ private fun EmptyShareState(
             Column(modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp)) {
                 ShareOptionRow(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Rounded.Description,
+                    icon = R.drawable.ic_description,
                     iconTint = LanBlue,
                     title = "选择文件",
                     subtitle = "尚未选择文件",
-                    trailing = { Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Muted, modifier = Modifier.size(28.dp)) },
+                    trailing = { Icon(painter = painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = Muted, modifier = Modifier.size(28.dp)) },
                     onClick = onPickFiles
                 )
                 HorizontalDivider(color = Divider)
                 ShareOptionRow(
                     modifier = Modifier.weight(1f),
-                    icon = Icons.Rounded.PhoneAndroid,
+                    icon = R.drawable.ic_phone_android,
                     iconTint = if (peer == null) Muted else LanBlue,
                     title = peer?.alias ?: "未发现设备",
                     subtitle = if (peer == null) {
@@ -245,7 +241,7 @@ private fun EmptyShareState(
                     } else "同一局域网",
                     trailing = {
                         if (peer == null) {
-                            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Muted, modifier = Modifier.size(28.dp))
+                            Icon(painter = painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = Muted, modifier = Modifier.size(28.dp))
                         } else {
                             SelectionCheck()
                         }
@@ -289,7 +285,7 @@ private fun SelectedShareState(
                     modifier = Modifier.fillMaxWidth().height(68.dp).padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconBubble(Icons.Rounded.Description, LanBlue)
+                    IconBubble(R.drawable.ic_description, LanBlue)
                     Text(
                         "已选 ${files.size} 个文件",
                         modifier = Modifier.padding(start = 14.dp).weight(1f),
@@ -373,7 +369,7 @@ private fun FlowHint() {
 @Composable
 private fun ShareOptionRow(
     modifier: Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: Int,
     iconTint: Color,
     title: String,
     subtitle: String,
@@ -405,7 +401,7 @@ private fun ShareDeviceRow(peer: Peer?, availableCount: Int, onClick: () -> Unit
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconBubble(Icons.Rounded.PhoneAndroid, if (peer == null) Muted else LanBlue)
+            IconBubble(R.drawable.ic_phone_android, if (peer == null) Muted else LanBlue)
             Column(modifier = Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     peer?.alias ?: "未发现设备",
@@ -425,7 +421,7 @@ private fun ShareDeviceRow(peer: Peer?, availableCount: Int, onClick: () -> Unit
                 )
             }
             if (peer == null) {
-                Icon(Icons.Rounded.ChevronRight, contentDescription = "选择设备", tint = Muted, modifier = Modifier.size(28.dp))
+                Icon(painter = painterResource(R.drawable.ic_chevron_right), contentDescription = "选择设备", tint = Muted, modifier = Modifier.size(28.dp))
             } else {
                 SelectionCheck()
             }
@@ -441,7 +437,7 @@ private fun SelectedFileRow(file: SharedFile, onRemove: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Surface(modifier = Modifier.size(48.dp), color = fileKindBackground(kind), shape = RoundedCornerShape(13.dp)) {
-            Icon(fileKindIcon(kind), contentDescription = null, tint = fileKindTint(kind), modifier = Modifier.padding(10.dp).size(28.dp))
+            Icon(painter = painterResource(fileKindIcon(kind)), contentDescription = null, tint = fileKindTint(kind), modifier = Modifier.padding(10.dp).size(28.dp))
         }
         Column(modifier = Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(file.name, style = MaterialTheme.typography.titleMedium, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -456,9 +452,9 @@ private fun SelectedFileRow(file: SharedFile, onRemove: () -> Unit) {
 }
 
 @Composable
-private fun IconBubble(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color) {
+private fun IconBubble(icon: Int, tint: Color) {
     Surface(color = PaleBlue, shape = CircleShape, modifier = Modifier.size(64.dp)) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.padding(16.dp).size(32.dp))
+        Icon(painter = painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.padding(16.dp).size(32.dp))
     }
 }
 

@@ -4,6 +4,11 @@ The Apache-2.0 license in [`LICENSE`](LICENSE) applies only to original
 LanShare source code and documentation. Dependencies brought in by Gradle
 remain under their own licenses and notices.
 
+The retained material icon vectors are derived from AndroidX Material Icons
+1.7.8, Copyright The Android Open Source Project, under the Apache License 2.0.
+The app keeps the icons it uses as VectorDrawable resources instead of bundling
+the extended icon catalog. See <https://www.apache.org/licenses/LICENSE-2.0>.
+
 The current direct dependencies are declared in
 [`app/build.gradle.kts`](app/build.gradle.kts), including AndroidX/Jetpack
 artifacts, CameraX, ML Kit Barcode Scanning, ZXing Core, Kotlin/Compose tooling,

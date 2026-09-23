@@ -32,6 +32,8 @@ jobs:
           python-version: "3.12"
       - name: Run repository static verification
         run: python3 scripts/static_verify.py
+      - name: Test APK size gate
+        run: python3 -m unittest discover --start-directory scripts --pattern 'test_*.py'
       - name: Check whitespace errors
         run: git diff --check
 
@@ -51,18 +53,87 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
-      - name: Run unit tests, lint and debug assemble
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Run unit tests, lint, and debug/Release builds
+        run: >-
+          ./gradlew --no-daemon --stacktrace
+          :app:testDebugUnitTest
+          :app:lintDebug
+          :app:lintRelease
+          :app:assembleDebug
+          :app:assembleRelease
       - name: Upload debug APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LanShare-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
+      - name: Report and enforce Release APK size
+        run: |
+          set -euo pipefail
+          mapfile -t APK_FILES < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APK_FILES[@]}" -eq 4
+          python3 scripts/report_apk_size.py "${APK_FILES[@]}" \
+            --max-mib 15 \
+            --expect-abis arm64-v8a armeabi-v7a x86 x86_64 \
+            --report-file app/build/reports/apk-size-release.md
+      - name: Upload Release APK size report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LanShare-release-apk-size-report
+          path: app/build/reports/apk-size-release.md
+          if-no-files-found: ignore
+          retention-days: 7
+
+  arm-release-candidate:
+    name: Combined ARM release APK
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+      - name: Build unsigned combined ARM Release APK
+        run: >-
+          ./gradlew --no-daemon --stacktrace
+          -PlanShareArmReleasePackage=true
+          :app:assembleRelease
+      - name: Verify package and enforce size and ABI gate
+        run: |
+          set -euo pipefail
+          mapfile -t APK_FILES < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APK_FILES[@]}" -eq 1
+          APK="${APK_FILES[0]}"
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -n "$APKANALYZER"
+          test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
+          test "$("$APKANALYZER" manifest debuggable "$APK")" = "false"
+          python3 scripts/report_apk_size.py "$APK" \
+            --max-mib 15 \
+            --expect-abi-set arm64-v8a armeabi-v7a \
+            --report-file app/build/reports/apk-size-arm-release-candidate.md
 
   docker:
     name: Docker verification

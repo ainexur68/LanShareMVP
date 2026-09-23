@@ -17,13 +17,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Devices
-import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.PictureAsPdf
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -37,7 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,6 +40,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.lanshare.AppState
 import com.example.lanshare.Peer
+import com.example.lanshare.R
 
 @Composable
 internal fun FileListDialog(onDismiss: () -> Unit) {
@@ -114,7 +110,7 @@ private fun FileListRow(name: String, size: Long, mime: String?) {
             shape = RoundedCornerShape(13.dp)
         ) {
             Icon(
-                fileKindIcon(kind),
+                painter = painterResource(fileKindIcon(kind)),
                 contentDescription = null,
                 tint = fileKindTint(kind),
                 modifier = Modifier.padding(10.dp).size(28.dp)
@@ -127,11 +123,11 @@ private fun FileListRow(name: String, size: Long, mime: String?) {
     }
 }
 
-internal fun fileKindIcon(kind: FileKind): ImageVector = when (kind) {
-    FileKind.IMAGE -> Icons.Rounded.Image
-    FileKind.VIDEO -> Icons.Rounded.PlayArrow
-    FileKind.PDF -> Icons.Rounded.PictureAsPdf
-    FileKind.GENERIC -> Icons.AutoMirrored.Rounded.InsertDriveFile
+internal fun fileKindIcon(kind: FileKind): Int = when (kind) {
+    FileKind.IMAGE -> R.drawable.ic_image
+    FileKind.VIDEO -> R.drawable.ic_play_arrow
+    FileKind.PDF -> R.drawable.ic_picture_as_pdf
+    FileKind.GENERIC -> R.drawable.ic_insert_drive_file
 }
 
 internal fun fileKindBackground(kind: FileKind): Color = when (kind) {
@@ -181,7 +177,7 @@ internal fun PeerPickerDialog(
                         modifier = Modifier.fillMaxWidth().clickable { onSelect(peer) }.padding(vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Rounded.Devices, contentDescription = null, tint = LanBlue)
+                        Icon(painter = painterResource(R.drawable.ic_devices), contentDescription = null, tint = LanBlue)
                         Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
                             Text(peer.alias, fontWeight = FontWeight.SemiBold)
                             Text("${peer.host}:${peer.port}", style = MaterialTheme.typography.bodySmall, color = Muted)

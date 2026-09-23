@@ -16,9 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.FlashlightOff
-import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -37,10 +34,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.lanshare.R
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -143,7 +142,7 @@ internal fun QrScanner(
                 IconButton(onClick = { torchEnabled = !torchEnabled }) {
                     Surface(color = PaleBlue, shape = CircleShape) {
                         Icon(
-                            if (torchEnabled) Icons.Rounded.FlashlightOff else Icons.Rounded.FlashlightOn,
+                            painter = painterResource(if (torchEnabled) R.drawable.ic_flashlight_off else R.drawable.ic_flashlight_on),
                             contentDescription = if (torchEnabled) "关闭手电筒" else "开启手电筒",
                             tint = LanBlue,
                             modifier = Modifier.padding(12.dp).size(24.dp)
@@ -171,7 +170,7 @@ internal fun ScannerPlaceholder(modifier: Modifier, onClick: () -> Unit, error: 
                 IconButton(onClick = onClick) {
                     Surface(color = PaleBlue, shape = CircleShape) {
                         Icon(
-                            Icons.Rounded.FlashlightOn,
+                            painter = painterResource(R.drawable.ic_flashlight_on),
                             contentDescription = "打开相机",
                             tint = LanBlue,
                             modifier = Modifier.padding(12.dp).size(24.dp)

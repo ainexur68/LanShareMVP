@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build signed APK and publish release
+    name: Build signed ARM APK and publish release
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -34,6 +34,11 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Validate release secrets
         env:
@@ -65,34 +70,58 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Test, lint and build signed release APK
+      - name: Test, lint and build signed combined ARM release APK
         run: |
-          ./gradlew --no-daemon --stacktrace             :app:testDebugUnitTest             :app:lintDebug             :app:assembleRelease
+          ./gradlew --no-daemon --stacktrace \
+            -PlanShareArmReleasePackage=true \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:lintRelease \
+            :app:assembleRelease
 
-      - name: Verify APK signature
+      - name: Verify signed production ARM Release APK
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
           test -f "$APK"
+          mapfile -t APK_FILES < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APK_FILES[@]}" -eq 1
+          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -n "$APKANALYZER"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
+          test "$("$APKANALYZER" manifest application-id "$APK")" = "top.nexur.lanshare"
+          test "$("$APKANALYZER" manifest debuggable "$APK")" = "false"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Prepare release artifacts
         run: |
           set -euo pipefail
           mkdir -p release-artifacts
-          cp app/build/outputs/apk/release/app-release.apk             "release-artifacts/LanShare-${GITHUB_REF_NAME}.apk"
+          cp "app/build/outputs/apk/release/app-release.apk" \
+            "release-artifacts/LanShare-${GITHUB_REF_NAME}.apk"
           (
             cd release-artifacts
             sha256sum "LanShare-${GITHUB_REF_NAME}.apk" > SHA256SUMS.txt
           )
 
+      - name: Report and enforce Release APK size
+        run: |
+          set -euo pipefail
+          mapfile -t APK_FILES < <(find release-artifacts -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APK_FILES[@]}" -eq 1
+          python3 scripts/report_apk_size.py "${APK_FILES[0]}" \
+            --max-mib 15 \
+            --expect-abi-set arm64-v8a armeabi-v7a \
+            --report-file app/build/reports/apk-size-release.md
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: LanShare-${{ github.ref_name }}-release
-          path: release-artifacts/*
+          path: |
+            release-artifacts/*
+            app/build/reports/apk-size-release.md
           if-no-files-found: error
           retention-days: 90
 
@@ -100,4 +129,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME"             release-artifacts/*             --verify-tag             --generate-notes             --title "LanShare $GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" \
+            release-artifacts/* \
+            --verify-tag \
+            --generate-notes \
+            --title "LanShare $GITHUB_REF_NAME"
